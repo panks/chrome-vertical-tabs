@@ -88,29 +88,33 @@ async function handleAddToNewGroup() {
     console.error('No tab selected for grouping');
     return;
   }
-  
-  // Prompt user for group name
-  const groupName = prompt('Enter a name for the new group:');
-  if (!groupName || groupName.trim() === '') {
-    return; // User cancelled or entered empty name
-  }
-  
+
   try {
-    // Create new group ID
     const newGroupId = `group-${Date.now()}`;
-    
-    // Send message to background script to update tab group mapping
+    const groupName = 'New Group';
+
     const response = await chrome.runtime.sendMessage({
       action: 'addTabToNewGroup',
       tabId: parseInt(currentTabId),
       groupId: newGroupId,
-      groupName: groupName.trim()
+      groupName: groupName
     });
-    
+
     if (response && response.success) {
-      // Trigger an update to sync with the background script changes
-      // This will properly move the tab and create the group with the correct name
-      debouncedUpdateTabs();
+      await debouncedUpdateTabs();
+      
+      const groupEl = document.querySelector(`.tab-group[data-group-id="${newGroupId}"]`);
+      if (groupEl) {
+        const groupNameEl = groupEl.querySelector('.group-name');
+        if (groupNameEl) {
+          groupNameEl.focus();
+          const selection = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(groupNameEl);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+      }
     }
   } catch (error) {
     console.error('Error adding tab to new group:', error);
@@ -162,6 +166,12 @@ function renderTabs() {
     groupName.className = 'group-name';
     groupName.textContent = group.name;
     groupName.contentEditable = (groupId !== 'ungrouped');
+    groupName.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            e.target.blur();
+        }
+    });
     groupName.addEventListener('blur', async (e) => {
       const newName = e.target.textContent;
       if (newName.trim() !== '' && groupId !== 'ungrouped') {
@@ -319,15 +329,16 @@ function addDragAndDropHandlers() {
 
 // Debounced version of updateTabs to prevent rapid successive calls
 function debouncedUpdateTabs() {
-  // Clear any existing timeout
-  if (updateTimeout) {
-    clearTimeout(updateTimeout);
-  }
-  
-  // Set a new timeout to call updateTabs after a brief delay
-  updateTimeout = setTimeout(() => {
-    updateTabsInternal();
-  }, 100); // 100ms delay to debounce rapid calls
+  return new Promise((resolve) => {
+    if (updateTimeout) {
+      clearTimeout(updateTimeout);
+    }
+    
+    updateTimeout = setTimeout(async () => {
+      await updateTabsInternal();
+      resolve();
+    }, 100);
+  });
 }
 
 async function updateTabsInternal() {
