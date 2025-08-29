@@ -3,12 +3,31 @@ let groupNames = {}; // In-memory store: { groupId: groupName }
 
 // Removed Chrome context menu - will be replaced with custom context menu in sidepanel
 
-chrome.tabs.onCreated.addListener((newTab) => {
+chrome.tabs.onCreated.addListener(async (newTab) => {
+  let openerGroupId;
+
   if (newTab.openerTabId) {
-    const openerGroupId = tabGroupMap[newTab.openerTabId];
-    if (openerGroupId) {
-      tabGroupMap[newTab.id] = openerGroupId;
+    openerGroupId = tabGroupMap[newTab.openerTabId];
+  }
+
+  // Fallback for cases like "New Tab to the Right" where openerTabId is not set.
+  if (!openerGroupId && newTab.index > 0) {
+    try {
+      const [leftTab] = await chrome.tabs.query({
+        windowId: newTab.windowId,
+        index: newTab.index - 1
+      });
+
+      if (leftTab) {
+        openerGroupId = tabGroupMap[leftTab.id];
+      }
+    } catch (error) {
+      console.error('Error finding group for new tab:', error);
     }
+  }
+
+  if (openerGroupId) {
+    tabGroupMap[newTab.id] = openerGroupId;
   }
 });
 
