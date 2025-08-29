@@ -6,7 +6,6 @@
   "permissions": [
     "tabs",
     "sidePanel",
-    "contextMenus",
     "storage"
   ],
   "side_panel": {

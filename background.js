@@ -1,26 +1,7 @@
 let tabGroupMap = {}; // In-memory store: { tabId: groupId }
+let groupNames = {}; // In-memory store: { groupId: groupName }
 
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: "add-to-new-group",
-    title: "Add to New Group",
-    contexts: ["page"]
-  });
-});
-
-chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === "add-to-new-group") {
-    const newGroupId = `group-${Date.now()}`;
-    tabGroupMap[tab.id] = newGroupId;
-    
-    // Notify the side panel to update with error handling
-    try {
-      chrome.runtime.sendMessage({ action: 'updatePanel' });
-    } catch (error) {
-      console.warn('Failed to notify side panel:', error);
-    }
-  }
-});
+// Removed Chrome context menu - will be replaced with custom context menu in sidepanel
 
 chrome.tabs.onCreated.addListener((newTab) => {
   if (newTab.openerTabId) {
@@ -37,9 +18,24 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'getTabGroupMap') {
-        sendResponse({ tabGroupMap: tabGroupMap });
+        sendResponse({ tabGroupMap: tabGroupMap, groupNames: groupNames });
     } else if (message.action === 'updateTabGroup') {
         tabGroupMap[message.tabId] = message.newGroupId;
+    } else if (message.action === 'addTabToNewGroup') {
+        // Create new group and add tab to it
+        const newGroupId = message.groupId || `group-${Date.now()}`;
+        const groupName = message.groupName || `Group ${Object.keys(groupNames).length + 1}`;
+        
+        tabGroupMap[message.tabId] = newGroupId;
+        groupNames[newGroupId] = groupName;
+        
+        sendResponse({ success: true, groupId: newGroupId, groupName: groupName });
+    } else if (message.action === 'updateGroupName') {
+        // Handle group name updates
+        if (message.groupId && message.groupName) {
+            groupNames[message.groupId] = message.groupName;
+            sendResponse({ success: true });
+        }
     }
     return true; // Indicates that the response is sent asynchronously
 });

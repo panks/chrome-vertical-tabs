@@ -20,9 +20,125 @@ let tabGroups = {
 };
 let dragSrcEl = null;
 
+// Context menu elements
+let contextMenu = null;
+let currentTabId = null;
+
 // Variables to prevent duplicate updates and race conditions
 let isUpdating = false;
 let updateTimeout = null;
+
+/**
+ * Creates the custom context menu element
+ */
+function createContextMenu() {
+  if (contextMenu) {
+    contextMenu.remove();
+  }
+  
+  contextMenu = document.createElement('div');
+  contextMenu.className = 'context-menu';
+  contextMenu.style.cssText = `
+    position: fixed;
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    padding: 4px 0;
+    min-width: 150px;
+    display: none;
+  `;
+  
+  const addToNewGroupOption = document.createElement('div');
+  addToNewGroupOption.className = 'context-menu-item';
+  addToNewGroupOption.textContent = 'Add to New Group';
+  addToNewGroupOption.style.cssText = `
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 14px;
+  `;
+  
+  // Hover effects
+  addToNewGroupOption.addEventListener('mouseenter', () => {
+    addToNewGroupOption.style.backgroundColor = '#f0f0f0';
+  });
+  
+  addToNewGroupOption.addEventListener('mouseleave', () => {
+    addToNewGroupOption.style.backgroundColor = '';
+  });
+  
+  // Click handler for "Add to New Group"
+  addToNewGroupOption.addEventListener('click', () => {
+    handleAddToNewGroup();
+    hideContextMenu();
+  });
+  
+  contextMenu.appendChild(addToNewGroupOption);
+  document.body.appendChild(contextMenu);
+}
+
+/**
+ * Shows the context menu at the specified coordinates
+ */
+function showContextMenu(x, y, tabId) {
+  if (!contextMenu) {
+    createContextMenu();
+  }
+  
+  currentTabId = tabId;
+  contextMenu.style.left = x + 'px';
+  contextMenu.style.top = y + 'px';
+  contextMenu.style.display = 'block';
+}
+
+/**
+ * Hides the context menu
+ */
+function hideContextMenu() {
+  if (contextMenu) {
+    contextMenu.style.display = 'none';
+  }
+  currentTabId = null;
+}
+
+/**
+ * Handles the "Add to New Group" functionality
+ */
+async function handleAddToNewGroup() {
+  if (!currentTabId) {
+    console.error('No tab selected for grouping');
+    return;
+  }
+  
+  // Prompt user for group name
+  const groupName = prompt('Enter a name for the new group:');
+  if (!groupName || groupName.trim() === '') {
+    return; // User cancelled or entered empty name
+  }
+  
+  try {
+    // Create new group ID
+    const newGroupId = `group-${Date.now()}`;
+    
+    // Send message to background script to update tab group mapping
+    const response = await chrome.runtime.sendMessage({
+      action: 'addTabToNewGroup',
+      tabId: parseInt(currentTabId),
+      groupId: newGroupId,
+      groupName: groupName.trim()
+    });
+    
+    if (response && response.success) {
+      // Trigger an update to sync with the background script changes
+      // This will properly move the tab and create the group with the correct name
+      debouncedUpdateTabs();
+    }
+  } catch (error) {
+    console.error('Error adding tab to new group:', error);
+    alert('Failed to create new group. Please try again.');
+  }
+}
 
 function renderTabs() {
   // Clear the container to prevent duplicates
@@ -53,10 +169,25 @@ function renderTabs() {
     groupName.className = 'group-name';
     groupName.textContent = group.name;
     groupName.contentEditable = (groupId !== 'ungrouped');
-    groupName.addEventListener('blur', (e) => {
+    groupName.addEventListener('blur', async (e) => {
       const newName = e.target.textContent;
       if (newName.trim() !== '' && groupId !== 'ungrouped') {
+        const oldName = tabGroups[groupId].name;
         tabGroups[groupId].name = newName;
+        
+        // Sync group name change to background script
+        try {
+          await chrome.runtime.sendMessage({
+            action: 'updateGroupName',
+            groupId: groupId,
+            groupName: newName.trim()
+          });
+        } catch (error) {
+          console.warn('Failed to update group name in background script:', error);
+          // Revert on error
+          tabGroups[groupId].name = oldName;
+          e.target.textContent = oldName;
+        }
       } else {
         e.target.textContent = tabGroups[groupId].name;
       }
@@ -97,6 +228,13 @@ function renderTabs() {
       tabEl.addEventListener('click', () => {
         chrome.tabs.update(tab.id, { active: true });
         chrome.windows.update(tab.windowId, { focused: true });
+      });
+
+      // Add right-click context menu for tabs only
+      tabEl.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        showContextMenu(e.clientX, e.clientY, tab.id);
       });
 
       const closeBtn = document.createElement('button');
@@ -205,21 +343,24 @@ async function updateTabsInternal() {
         tabGroups[groupId].tabs = [];
     }
 
-    // Get tab group map with error handling
+    // Get tab group map and group names with error handling
     let tabGroupMap = {};
+    let groupNames = {};
     try {
       const response = await chrome.runtime.sendMessage({ action: 'getTabGroupMap' });
       tabGroupMap = response?.tabGroupMap || {};
+      groupNames = response?.groupNames || {};
     } catch (error) {
       console.warn('Failed to get tab group map:', error);
-      // Continue with empty map as fallback
+      // Continue with empty maps as fallback
     }
     
     allTabs.forEach(tab => {
       const groupId = tabGroupMap[tab.id] || 'ungrouped';
       if (!tabGroups[groupId] && groupId !== 'ungrouped') {
-          // This case handles groups from the context menu that might not be in the sidepanel's state yet.
-          tabGroups[groupId] = { name: `Group ${Object.keys(tabGroups).length}`, tabs: [] };
+          // Create new group with name from background script, or use default
+          const groupName = groupNames[groupId] || `Group ${Object.keys(tabGroups).length}`;
+          tabGroups[groupId] = { name: groupName, tabs: [] };
       }
       if (tabGroups[groupId]) {
           tabGroups[groupId].tabs.push(tab);
@@ -273,5 +414,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
+
+// Initialize context menu and global click handler
+createContextMenu();
+
+// Global click handler to hide context menu when clicking elsewhere
+document.addEventListener('click', (e) => {
+  if (contextMenu && !contextMenu.contains(e.target)) {
+    hideContextMenu();
+  }
+});
+
+// Prevent context menu on empty areas of the container
+tabsContainer.addEventListener('contextmenu', (e) => {
+  // Only allow context menu on tab elements, not empty container areas
+  if (!e.target.closest('.tab-item')) {
+    e.preventDefault();
+  }
+});
 
 updateTabs();
