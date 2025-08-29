@@ -106,14 +106,23 @@ body.dark-mode .delete-group-btn:hover {
   padding: 0;
 }
 
+.favicon {
+  width: 16px;
+  height: 16px;
+  margin-right: 8px;
+}
+
+.tab-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .tab-item {
   display: flex;
   align-items: center;
   padding: 8px;
   cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   border-bottom: 1px solid #eee;
 }
 

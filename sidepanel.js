@@ -217,9 +217,18 @@ function renderTabs() {
     group.tabs.forEach(tab => {
       const tabEl = document.createElement('li');
       tabEl.className = 'tab-item';
-      tabEl.textContent = tab.title || tab.url;
       tabEl.dataset.tabId = tab.id;
       tabEl.draggable = true;
+
+      const favicon = document.createElement('img');
+      favicon.className = 'favicon';
+      favicon.src = tab.favIconUrl || 'icons/icon16.png';
+      tabEl.appendChild(favicon);
+
+      const title = document.createElement('span');
+      title.className = 'tab-title';
+      title.textContent = tab.title || tab.url;
+      tabEl.appendChild(title);
 
       if (tab.active) {
         tabEl.classList.add('active');
