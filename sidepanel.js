@@ -20,6 +20,7 @@ let tabGroups = {
 };
 let groupOrder = ['ungrouped'];
 let dragSrcEl = null;
+let selectedTabs = new Set();
 
 // Context menu elements
 let contextMenu = null;
@@ -286,10 +287,24 @@ function renderTabs() {
         if (tab.active) {
           tabEl.classList.add('active');
         }
+        if (selectedTabs.has(tab.id)) {
+          tabEl.classList.add('selected');
+        }
 
-        tabEl.addEventListener('click', () => {
-          chrome.tabs.update(tab.id, { active: true });
-          chrome.windows.update(tab.windowId, { focused: true });
+        tabEl.addEventListener('click', (e) => {
+          if (e.shiftKey) {
+            e.preventDefault();
+            if (selectedTabs.has(tab.id)) {
+              selectedTabs.delete(tab.id);
+            } else {
+              selectedTabs.add(tab.id);
+            }
+            renderTabs();
+          } else {
+            selectedTabs.clear();
+            chrome.tabs.update(tab.id, { active: true });
+            chrome.windows.update(tab.windowId, { focused: true });
+          }
         });
 
         // Add right-click context menu for tabs only
@@ -336,10 +351,20 @@ function moveGroup(groupId, direction) {
 }
 
 function handleDragStart(e) {
-  dragSrcEl = this;
+  const tabId = parseInt(this.dataset.tabId);
+  if (!selectedTabs.has(tabId)) {
+    selectedTabs.clear();
+    selectedTabs.add(tabId);
+    // No direct re-render here, but the drop logic will use the updated selectedTabs
+  }
+
   e.dataTransfer.effectAllowed = 'move';
-  e.dataTransfer.setData('text/html', this.innerHTML);
-  this.classList.add('dragging');
+  e.dataTransfer.setData('application/json', JSON.stringify(Array.from(selectedTabs)));
+
+  selectedTabs.forEach(id => {
+    const el = document.querySelector(`.tab-item[data-tab-id="${id}"]`);
+    if (el) el.classList.add('dragging');
+  });
 }
 
 function handleDragOver(e) {
@@ -354,44 +379,55 @@ function handleDrop(e) {
   if (e.stopPropagation) {
     e.stopPropagation();
   }
+  
+  const droppedOnGroupEl = this.closest('.tab-group');
+  if (!droppedOnGroupEl) return false;
 
-  if (dragSrcEl) {
-    const droppedOnGroupEl = this.closest('.tab-group');
-    const targetGroupId = droppedOnGroupEl.dataset.groupId;
-    const tabId = parseInt(dragSrcEl.dataset.tabId);
+  const targetGroupId = droppedOnGroupEl.dataset.groupId;
+  const tabIdsToMove = JSON.parse(e.dataTransfer.getData('application/json'));
 
-    // Find and move the tab
-    for (const sourceGroupId in tabGroups) {
-      const tabIndex = tabGroups[sourceGroupId].tabs.findIndex(t => t.id === tabId);
-      if (tabIndex > -1) {
-        const [tabToMove] = tabGroups[sourceGroupId].tabs.splice(tabIndex, 1);
-        const targetTabs = tabGroups[targetGroupId].tabs;
+  if (!Array.isArray(tabIdsToMove) || tabIdsToMove.length === 0) {
+    return false;
+  }
 
-        // Find correct insertion point to maintain sort order by windowId then tab index
-        const insertionIndex = targetTabs.findIndex(t =>
-          (t.windowId > tabToMove.windowId) ||
-          (t.windowId === tabToMove.windowId && t.index > tabToMove.index)
-        );
+  const tabsMoved = [];
 
-        if (insertionIndex === -1) {
-          // If no tab should come after, add to the end
-          targetTabs.push(tabToMove);
-        } else {
-          // Insert at the correct position
-          targetTabs.splice(insertionIndex, 0, tabToMove);
-        }
-        
-        chrome.runtime.sendMessage({ action: 'updateTabGroup', tabId: tabId, newGroupId: targetGroupId });
-        break;
+  // Remove tabs from their source groups
+  for (const sourceGroupId in tabGroups) {
+    const sourceGroup = tabGroups[sourceGroupId];
+    const tabsToKeep = [];
+    for (const tab of sourceGroup.tabs) {
+      if (tabIdsToMove.includes(tab.id)) {
+        tabsMoved.push(tab);
+        chrome.runtime.sendMessage({ action: 'updateTabGroup', tabId: tab.id, newGroupId: targetGroupId });
+      } else {
+        tabsToKeep.push(tab);
       }
     }
-    renderTabs();
+    sourceGroup.tabs = tabsToKeep;
   }
+
+  // Add tabs to the target group and sort them
+  const targetTabs = tabGroups[targetGroupId].tabs;
+  tabsMoved.forEach(tabToMove => {
+    targetTabs.push(tabToMove);
+  });
+  targetTabs.sort((a, b) => {
+    if (a.windowId !== b.windowId) {
+      return a.windowId - b.windowId;
+    }
+    return a.index - b.index;
+  });
+
+  renderTabs();
   return false;
 }
 
 function handleDragEnd(e) {
-  this.classList.remove('dragging');
+  const items = document.querySelectorAll('.tab-item');
+  items.forEach(function(item) {
+    item.classList.remove('dragging');
+  });
 }
 
 function addDragAndDropHandlers() {
