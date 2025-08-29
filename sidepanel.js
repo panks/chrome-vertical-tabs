@@ -198,7 +198,7 @@ function renderTabs() {
     if (groupId !== 'ungrouped') {
       const deleteGroupBtn = document.createElement('button');
       deleteGroupBtn.className = 'delete-group-btn';
-      deleteGroupBtn.textContent = '✕';
+      deleteGroupBtn.textContent = 'X';
       deleteGroupBtn.title = 'Delete group and close tabs';
       deleteGroupBtn.addEventListener('click', () => {
         const tabsToClose = group.tabs.map(t => t.id);
@@ -239,7 +239,7 @@ function renderTabs() {
 
       const closeBtn = document.createElement('button');
       closeBtn.className = 'close-tab-btn';
-      closeBtn.textContent = '✕';
+      closeBtn.textContent = 'X';
       closeBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         chrome.tabs.remove(tab.id);
