@@ -217,7 +217,6 @@ body.dark-mode .tab-item:hover {
 }
 
 .tab-item.active {
-  background-color: #fffbe6;
   font-weight: bold;
 }
 
@@ -226,7 +225,7 @@ body.dark-mode .tab-item:hover {
 }
 
 body.dark-mode .tab-item.active {
-  background-color: #5a5a4a;
+  /* No background change needed, just font weight is enough */
 }
 
 .tab-item.selected {
