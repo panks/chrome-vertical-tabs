@@ -385,9 +385,16 @@ async function updateTabsInternal() {
       }
     });
 
-    // Clean up empty groups
+    // Ensure all groups from groupNames are present, even if empty
+    for (const groupId in groupNames) {
+        if (!tabGroups[groupId] && groupId !== 'ungrouped') {
+            tabGroups[groupId] = { name: groupNames[groupId], tabs: [], collapsed: false };
+        }
+    }
+
+    // Clean up empty groups that are not in groupNames anymore
     for (const groupId in tabGroups) {
-      if (groupId !== 'ungrouped' && tabGroups[groupId].tabs.length === 0) {
+      if (groupId !== 'ungrouped' && !groupNames[groupId] && tabGroups[groupId].tabs.length === 0) {
         delete tabGroups[groupId];
       }
     }
@@ -406,10 +413,37 @@ function updateTabs() {
 }
 
 
-newGroupBtn.addEventListener('click', () => {
+newGroupBtn.addEventListener('click', async () => {
   const newGroupId = `group-${Date.now()}`;
-  tabGroups[newGroupId] = { name: `Group ${Object.keys(tabGroups).length}`, tabs: [], collapsed: false };
-  renderTabs();
+  const groupName = 'New Group';
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      action: 'createGroup',
+      groupId: newGroupId,
+      groupName: groupName
+    });
+
+    if (response && response.success) {
+      await debouncedUpdateTabs();
+
+      const groupEl = document.querySelector(`.tab-group[data-group-id="${newGroupId}"]`);
+      if (groupEl) {
+        const groupNameEl = groupEl.querySelector('.group-name');
+        if (groupNameEl) {
+          groupNameEl.focus();
+          const selection = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(groupNameEl);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error creating new group:', error);
+    alert('Failed to create new group. Please try again.');
+  }
 });
 
 chrome.tabs.onCreated.addListener(updateTabs);

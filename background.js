@@ -36,6 +36,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             groupNames[message.groupId] = message.groupName;
             sendResponse({ success: true });
         }
+    } else if (message.action === 'createGroup') {
+        const newGroupId = message.groupId || `group-${Date.now()}`;
+        const groupName = message.groupName || `New Group`;
+        if (!groupNames[newGroupId]) {
+            groupNames[newGroupId] = groupName;
+            sendResponse({ success: true, groupId: newGroupId, groupName: groupName });
+        } else {
+            sendResponse({ success: false, error: 'Group already exists' });
+        }
     }
     return true; // Indicates that the response is sent asynchronously
 });
