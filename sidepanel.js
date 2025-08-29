@@ -38,42 +38,20 @@ function createContextMenu() {
   
   contextMenu = document.createElement('div');
   contextMenu.className = 'context-menu';
-  contextMenu.style.cssText = `
-    position: fixed;
-    background: white;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.2);
-    z-index: 1000;
-    padding: 4px 0;
-    min-width: 150px;
-    display: none;
-  `;
-  
+  contextMenu.style.position = 'fixed';
+  contextMenu.style.zIndex = '1000';
+  contextMenu.style.display = 'none';
+
   const addToNewGroupOption = document.createElement('div');
   addToNewGroupOption.className = 'context-menu-item';
   addToNewGroupOption.textContent = 'Add to New Group';
-  addToNewGroupOption.style.cssText = `
-    padding: 8px 16px;
-    cursor: pointer;
-    font-size: 14px;
-  `;
-  
-  // Hover effects
-  addToNewGroupOption.addEventListener('mouseenter', () => {
-    addToNewGroupOption.style.backgroundColor = '#f0f0f0';
-  });
-  
-  addToNewGroupOption.addEventListener('mouseleave', () => {
-    addToNewGroupOption.style.backgroundColor = '';
-  });
-  
+
   // Click handler for "Add to New Group"
   addToNewGroupOption.addEventListener('click', () => {
     handleAddToNewGroup();
     hideContextMenu();
   });
-  
+
   contextMenu.appendChild(addToNewGroupOption);
   document.body.appendChild(contextMenu);
 }
