@@ -221,6 +221,10 @@ body.dark-mode .tab-item:hover {
   font-weight: bold;
 }
 
+.tab-item.active .tab-title {
+  text-decoration: underline;
+}
+
 body.dark-mode .tab-item.active {
   background-color: #5a5a4a;
 }
