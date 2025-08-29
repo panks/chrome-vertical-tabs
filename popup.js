@@ -1,16 +1,24 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const radios = document.querySelectorAll('input[name="sidebar-position"]');
+  const positionRadios = document.querySelectorAll('input[name="sidebar-position"]');
+  const themeRadios = document.querySelectorAll('input[name="theme"]');
   
-  chrome.storage.local.get('sidebarPosition', (result) => {
+  chrome.storage.local.get(['sidebarPosition', 'theme'], (result) => {
     const currentPosition = result.sidebarPosition || 'left'; // Default to left
-    radios.forEach(radio => {
+    positionRadios.forEach(radio => {
       if (radio.value === currentPosition) {
+        radio.checked = true;
+      }
+    });
+
+    const currentTheme = result.theme || 'light'; // Default to light
+    themeRadios.forEach(radio => {
+      if (radio.value === currentTheme) {
         radio.checked = true;
       }
     });
   });
 
-  radios.forEach(radio => {
+  positionRadios.forEach(radio => {
     radio.addEventListener('change', (event) => {
       const newPosition = event.target.value;
       chrome.storage.local.set({ sidebarPosition: newPosition });
@@ -26,6 +34,14 @@ document.addEventListener('DOMContentLoaded', () => {
           note.style.color = '#888';
           settingsContainer.appendChild(note);
       }
+    });
+  });
+
+  themeRadios.forEach(radio => {
+    radio.addEventListener('change', (event) => {
+      const newTheme = event.target.value;
+      chrome.storage.local.set({ theme: newTheme });
+      chrome.runtime.sendMessage({ action: 'updateTheme', theme: newTheme });
     });
   });
 });

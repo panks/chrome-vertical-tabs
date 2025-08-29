@@ -416,6 +416,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 
+// Initialize theme on load
+function applyTheme(theme) {
+  if (theme === 'dark') {
+    document.body.classList.add('dark-mode');
+  } else {
+    document.body.classList.remove('dark-mode');
+  }
+}
+
+chrome.storage.local.get('theme', (result) => {
+  const currentTheme = result.theme || 'light';
+  applyTheme(currentTheme);
+});
+
+// Listen for theme changes from the popup
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === 'updateTheme') {
+        applyTheme(message.theme);
+    }
+});
+
+
 // Initialize context menu and global click handler
 createContextMenu();
 
