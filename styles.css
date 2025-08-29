@@ -64,10 +64,20 @@ body.dark-mode .group-header {
   border-bottom-color: #555;
 }
 
+.group-header-left {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
 .group-name {
   font-weight: bold;
   flex-grow: 1;
   padding: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .group-name[contenteditable="true"]:focus {
@@ -78,6 +88,27 @@ body.dark-mode .group-header {
 body.dark-mode .group-name[contenteditable="true"]:focus {
   background-color: #4a4a4a;
   outline-color: #009bff;
+}
+
+.collapse-btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 8px 0 0;
+  color: #555;
+}
+
+.collapse-btn:hover {
+  color: #000;
+}
+
+body.dark-mode .collapse-btn {
+  color: #aaa;
+}
+
+body.dark-mode .collapse-btn:hover {
+  color: #fff;
 }
 
 .delete-group-btn {

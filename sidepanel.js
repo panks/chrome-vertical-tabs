@@ -165,6 +165,21 @@ function renderTabs() {
     const groupHeader = document.createElement('div');
     groupHeader.className = 'group-header';
     
+    const groupHeaderLeft = document.createElement('div');
+    groupHeaderLeft.className = 'group-header-left';
+
+    if (groupId !== 'ungrouped') {
+      const collapseBtn = document.createElement('button');
+      collapseBtn.className = 'collapse-btn';
+      collapseBtn.textContent = group.collapsed ? '+' : '-';
+      collapseBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        group.collapsed = !group.collapsed;
+        renderTabs();
+      });
+      groupHeaderLeft.appendChild(collapseBtn);
+    }
+    
     const groupName = document.createElement('span');
     groupName.className = 'group-name';
     groupName.textContent = group.name;
@@ -193,7 +208,8 @@ function renderTabs() {
       }
     });
 
-    groupHeader.appendChild(groupName);
+    groupHeaderLeft.appendChild(groupName);
+    groupHeader.appendChild(groupHeaderLeft);
 
     if (groupId !== 'ungrouped') {
       const deleteGroupBtn = document.createElement('button');
@@ -211,54 +227,56 @@ function renderTabs() {
     
     groupEl.appendChild(groupHeader);
     
-    const tabList = document.createElement('ul');
-    tabList.className = 'tab-list';
-    
-    group.tabs.forEach(tab => {
-      const tabEl = document.createElement('li');
-      tabEl.className = 'tab-item';
-      tabEl.dataset.tabId = tab.id;
-      tabEl.draggable = true;
-
-      const favicon = document.createElement('img');
-      favicon.className = 'favicon';
-      favicon.src = tab.favIconUrl || 'icons/icon16.png';
-      tabEl.appendChild(favicon);
-
-      const title = document.createElement('span');
-      title.className = 'tab-title';
-      title.textContent = tab.title || tab.url;
-      tabEl.appendChild(title);
-
-      if (tab.active) {
-        tabEl.classList.add('active');
-      }
-
-      tabEl.addEventListener('click', () => {
-        chrome.tabs.update(tab.id, { active: true });
-        chrome.windows.update(tab.windowId, { focused: true });
-      });
-
-      // Add right-click context menu for tabs only
-      tabEl.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        showContextMenu(e.clientX, e.clientY, tab.id);
-      });
-
-      const closeBtn = document.createElement('button');
-      closeBtn.className = 'close-tab-btn';
-      closeBtn.textContent = 'X';
-      closeBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        chrome.tabs.remove(tab.id);
-      });
-      tabEl.appendChild(closeBtn);
+    if (!group.collapsed) {
+      const tabList = document.createElement('ul');
+      tabList.className = 'tab-list';
       
-      tabList.appendChild(tabEl);
-    });
+      group.tabs.forEach(tab => {
+        const tabEl = document.createElement('li');
+        tabEl.className = 'tab-item';
+        tabEl.dataset.tabId = tab.id;
+        tabEl.draggable = true;
 
-    groupEl.appendChild(tabList);
+        const favicon = document.createElement('img');
+        favicon.className = 'favicon';
+        favicon.src = tab.favIconUrl || 'icons/icon16.png';
+        tabEl.appendChild(favicon);
+
+        const title = document.createElement('span');
+        title.className = 'tab-title';
+        title.textContent = tab.title || tab.url;
+        tabEl.appendChild(title);
+
+        if (tab.active) {
+          tabEl.classList.add('active');
+        }
+
+        tabEl.addEventListener('click', () => {
+          chrome.tabs.update(tab.id, { active: true });
+          chrome.windows.update(tab.windowId, { focused: true });
+        });
+
+        // Add right-click context menu for tabs only
+        tabEl.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          showContextMenu(e.clientX, e.clientY, tab.id);
+        });
+
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'close-tab-btn';
+        closeBtn.textContent = 'X';
+        closeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          chrome.tabs.remove(tab.id);
+        });
+        tabEl.appendChild(closeBtn);
+        
+        tabList.appendChild(tabEl);
+      });
+
+      groupEl.appendChild(tabList);
+    }
 
     groupEl.addEventListener('dragover', handleDragOver);
     groupEl.addEventListener('drop', handleDrop);
@@ -369,7 +387,7 @@ async function updateTabsInternal() {
       if (!tabGroups[groupId] && groupId !== 'ungrouped') {
           // Create new group with name from background script, or use default
           const groupName = groupNames[groupId] || `Group ${Object.keys(tabGroups).length}`;
-          tabGroups[groupId] = { name: groupName, tabs: [] };
+          tabGroups[groupId] = { name: groupName, tabs: [], collapsed: false };
       }
       if (tabGroups[groupId]) {
           tabGroups[groupId].tabs.push(tab);
@@ -401,7 +419,7 @@ function updateTabs() {
 
 newGroupBtn.addEventListener('click', () => {
   const newGroupId = `group-${Date.now()}`;
-  tabGroups[newGroupId] = { name: `Group ${Object.keys(tabGroups).length}`, tabs: [] };
+  tabGroups[newGroupId] = { name: `Group ${Object.keys(tabGroups).length}`, tabs: [], collapsed: false };
   renderTabs();
 });
 
