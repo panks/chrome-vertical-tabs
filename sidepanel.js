@@ -19,7 +19,6 @@ let tabGroups = {
   ungrouped: { name: 'Ungrouped', tabs: [] }
 };
 let groupOrder = ['ungrouped'];
-let dragSrcEl = null;
 let selectedTabs = new Set();
 let isDragging = false;
 let isSidePanelInteracting = false; // Flag to track user interaction within the side panel
@@ -423,26 +422,26 @@ function handleDrop(e) {
 
   const tabsMoved = [];
 
-  // Remove tabs from their source groups
+  // Atomically find, remove, and collect tabs to be moved from all groups.
   for (const sourceGroupId in tabGroups) {
-    const sourceGroup = tabGroups[sourceGroupId];
-    const tabsToKeep = [];
-    for (const tab of sourceGroup.tabs) {
+    tabGroups[sourceGroupId].tabs = tabGroups[sourceGroupId].tabs.filter(tab => {
       if (tabIdsToMove.includes(tab.id)) {
         tabsMoved.push(tab);
-        chrome.runtime.sendMessage({ action: 'updateTabGroup', tabId: tab.id, newGroupId: targetGroupId });
-      } else {
-        tabsToKeep.push(tab);
+        return false; // Exclude from the source group
       }
-    }
-    sourceGroup.tabs = tabsToKeep;
+      return true; // Keep in the source group
+    });
   }
 
-  // Add tabs to the target group and sort them
-  const targetTabs = tabGroups[targetGroupId].tabs;
-  tabsMoved.forEach(tabToMove => {
-    targetTabs.push(tabToMove);
+  // Update the background script with the new group for each moved tab.
+  tabsMoved.forEach(tab => {
+    chrome.runtime.sendMessage({ action: 'updateTabGroup', tabId: tab.id, newGroupId: targetGroupId });
   });
+
+  // Add all moved tabs to the target group and sort them.
+  const targetTabs = tabGroups[targetGroupId].tabs;
+  targetTabs.push(...tabsMoved);
+
   targetTabs.sort((a, b) => {
     if (a.windowId !== b.windowId) {
       return a.windowId - b.windowId;

@@ -224,10 +224,6 @@ body.dark-mode .tab-item:hover {
   text-decoration: underline;
 }
 
-body.dark-mode .tab-item.active {
-  /* No background change needed, just font weight is enough */
-}
-
 .tab-item.selected {
   background-color: #d8eaff;
 }
