@@ -402,6 +402,7 @@ chrome.tabs.onRemoved.addListener(updateTabs);
 chrome.tabs.onMoved.addListener(updateTabs);
 chrome.tabs.onAttached.addListener(updateTabs);
 chrome.tabs.onDetached.addListener(updateTabs);
+chrome.tabs.onActivated.addListener(updateTabs);
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Safety check for message structure
   if (!message || typeof message !== 'object') {
