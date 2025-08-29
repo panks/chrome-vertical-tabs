@@ -45,6 +45,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         } else {
             sendResponse({ success: false, error: 'Group already exists' });
         }
+    } else if (message.action === 'deleteGroup') {
+        if (message.groupId && groupNames[message.groupId]) {
+            delete groupNames[message.groupId];
+            sendResponse({ success: true });
+        } else {
+            sendResponse({ success: false, error: 'Group not found' });
+        }
     }
     return true; // Indicates that the response is sent asynchronously
 });

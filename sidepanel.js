@@ -204,9 +204,21 @@ function renderTabs() {
       deleteGroupBtn.className = 'delete-group-btn';
       deleteGroupBtn.textContent = 'X';
       deleteGroupBtn.title = 'Delete group and close tabs';
-      deleteGroupBtn.addEventListener('click', () => {
+      deleteGroupBtn.addEventListener('click', async () => {
         const tabsToClose = group.tabs.map(t => t.id);
-        chrome.tabs.remove(tabsToClose);
+        if (tabsToClose.length > 0) {
+          chrome.tabs.remove(tabsToClose);
+        }
+        
+        try {
+          await chrome.runtime.sendMessage({
+            action: 'deleteGroup',
+            groupId: groupId
+          });
+        } catch (error) {
+          console.error('Error deleting group:', error);
+        }
+        
         delete tabGroups[groupId];
         renderTabs();
       });
