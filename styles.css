@@ -8,6 +8,7 @@ body {
 #main-container {
   /* width: 250px; */
   margin: 0 auto;
+  min-width: 300px;
 }
 
 body.dark-mode {
@@ -144,21 +145,22 @@ body.dark-mode .delete-group-btn:hover {
 }
 
 .favicon {
-  width: 16px;
-  height: 16px;
-  margin-right: 8px;
+  width: 20px;
+  height: 20px;
+  margin-right: 10px;
 }
 
 .tab-title {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: 14px;
 }
 
 .tab-item {
   display: flex;
   align-items: center;
-  padding: 8px;
+  padding: 10px;
   cursor: pointer;
   border-bottom: 1px solid #eee;
 }
