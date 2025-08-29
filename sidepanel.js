@@ -294,6 +294,8 @@ function renderTabs() {
         }
 
         tabEl.addEventListener('mousedown', (e) => {
+          if (e.target.classList.contains('close-tab-btn')) return;
+
           isSidePanelInteracting = true;
           // Immediately activate tab on mousedown for responsiveness.
           if (!e.shiftKey && e.button === 0) {
@@ -303,6 +305,8 @@ function renderTabs() {
         });
 
         tabEl.addEventListener('mouseup', (e) => {
+          if (e.target.classList.contains('close-tab-btn')) return;
+
           // Reset the flag after the event cycle, so onActivated can see it first.
           setTimeout(() => { isSidePanelInteracting = false; }, 0);
           
