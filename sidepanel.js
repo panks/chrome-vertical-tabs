@@ -21,6 +21,7 @@ let tabGroups = {
 let groupOrder = ['ungrouped'];
 let dragSrcEl = null;
 let selectedTabs = new Set();
+let dragJustEnded = false;
 
 // Context menu elements
 let contextMenu = null;
@@ -291,7 +292,31 @@ function renderTabs() {
           tabEl.classList.add('selected');
         }
 
+        tabEl.addEventListener('mousedown', (e) => {
+          // Immediately activate tab on mousedown for responsiveness.
+          if (!e.shiftKey && e.button === 0) {
+            chrome.tabs.update(tab.id, { active: true });
+            chrome.windows.update(tab.windowId, { focused: true });
+          }
+        });
+
+        tabEl.addEventListener('mouseup', (e) => {
+          if (e.shiftKey || e.button !== 0) return;
+
+          // If a drag operation just finished, don't treat this as a click.
+          if (dragJustEnded) {
+            dragJustEnded = false;
+            return;
+          }
+
+          // This is a normal click/mouseup. Set the selection.
+          selectedTabs.clear();
+          selectedTabs.add(tab.id);
+          renderTabs();
+        });
+
         tabEl.addEventListener('click', (e) => {
+          // This handler is now only for shift-clicks to toggle selection.
           if (e.shiftKey) {
             e.preventDefault();
             if (selectedTabs.has(tab.id)) {
@@ -300,10 +325,6 @@ function renderTabs() {
               selectedTabs.add(tab.id);
             }
             renderTabs();
-          } else {
-            selectedTabs.clear();
-            chrome.tabs.update(tab.id, { active: true });
-            chrome.windows.update(tab.windowId, { focused: true });
           }
         });
 
@@ -424,6 +445,7 @@ function handleDrop(e) {
 }
 
 function handleDragEnd(e) {
+  dragJustEnded = true; // Flag that a drag has ended to prevent mouseup from firing.
   const items = document.querySelectorAll('.tab-item');
   items.forEach(function(item) {
     item.classList.remove('dragging');
