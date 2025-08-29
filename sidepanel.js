@@ -18,6 +18,7 @@ const newGroupBtn = document.getElementById('new-group-btn');
 let tabGroups = {
   ungrouped: { name: 'Ungrouped', tabs: [] }
 };
+let groupOrder = ['ungrouped'];
 let dragSrcEl = null;
 
 // Context menu elements
@@ -132,7 +133,8 @@ function renderTabs() {
     return;
   }
   
-  for (const groupId in tabGroups) {
+  for (const groupId of groupOrder) {
+    if (!tabGroups[groupId]) continue;
     const group = tabGroups[groupId];
     
     // Safety check for group data
@@ -200,6 +202,35 @@ function renderTabs() {
     groupHeader.appendChild(groupHeaderLeft);
 
     if (groupId !== 'ungrouped') {
+      const groupControls = document.createElement('div');
+      groupControls.className = 'group-controls';
+
+      const upBtn = document.createElement('button');
+      upBtn.className = 'move-group-btn';
+      upBtn.innerHTML = '&#9650;'; // Up arrow
+      upBtn.title = 'Move group up';
+      upBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        moveGroup(groupId, 'up');
+      });
+
+      const downBtn = document.createElement('button');
+      downBtn.className = 'move-group-btn';
+      downBtn.innerHTML = '&#9660;'; // Down arrow
+      downBtn.title = 'Move group down';
+      downBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        moveGroup(groupId, 'down');
+      });
+
+      const groupedOrder = groupOrder.filter(id => id !== 'ungrouped');
+      const groupIndex = groupedOrder.indexOf(groupId);
+      if (groupIndex === 0) upBtn.disabled = true;
+      if (groupIndex === groupedOrder.length - 1) downBtn.disabled = true;
+
+      groupControls.appendChild(upBtn);
+      groupControls.appendChild(downBtn);
+
       const deleteGroupBtn = document.createElement('button');
       deleteGroupBtn.className = 'delete-group-btn';
       deleteGroupBtn.textContent = 'X';
@@ -220,9 +251,14 @@ function renderTabs() {
         }
         
         delete tabGroups[groupId];
+        const orderIndex = groupOrder.indexOf(groupId);
+        if (orderIndex > -1) {
+          groupOrder.splice(orderIndex, 1);
+        }
         renderTabs();
       });
-      groupHeader.appendChild(deleteGroupBtn);
+      groupControls.appendChild(deleteGroupBtn);
+      groupHeader.appendChild(groupControls);
     }
     
     groupEl.appendChild(groupHeader);
@@ -285,6 +321,18 @@ function renderTabs() {
   }
 
   addDragAndDropHandlers();
+}
+
+function moveGroup(groupId, direction) {
+  const index = groupOrder.indexOf(groupId);
+
+  if (direction === 'up' && index > 1) {
+    [groupOrder[index], groupOrder[index - 1]] = [groupOrder[index - 1], groupOrder[index]];
+    renderTabs();
+  } else if (direction === 'down' && index > 0 && index < groupOrder.length - 1) {
+    [groupOrder[index], groupOrder[index + 1]] = [groupOrder[index + 1], groupOrder[index]];
+    renderTabs();
+  }
 }
 
 function handleDragStart(e) {
@@ -404,6 +452,9 @@ async function updateTabsInternal() {
           // Create new group with name from background script, or use default
           const groupName = groupNames[groupId] || `Group ${Object.keys(tabGroups).length}`;
           tabGroups[groupId] = { name: groupName, tabs: [], collapsed: false };
+          if (!groupOrder.includes(groupId)) {
+            groupOrder.push(groupId);
+          }
       }
       if (tabGroups[groupId]) {
           tabGroups[groupId].tabs.push(tab);
@@ -416,6 +467,9 @@ async function updateTabsInternal() {
     for (const groupId in groupNames) {
         if (!tabGroups[groupId] && groupId !== 'ungrouped') {
             tabGroups[groupId] = { name: groupNames[groupId], tabs: [], collapsed: false };
+            if (!groupOrder.includes(groupId)) {
+              groupOrder.push(groupId);
+            }
         }
     }
 
@@ -423,6 +477,10 @@ async function updateTabsInternal() {
     for (const groupId in tabGroups) {
       if (groupId !== 'ungrouped' && !groupNames[groupId] && tabGroups[groupId].tabs.length === 0) {
         delete tabGroups[groupId];
+        const orderIndex = groupOrder.indexOf(groupId);
+        if (orderIndex > -1) {
+          groupOrder.splice(orderIndex, 1);
+        }
       }
     }
 
