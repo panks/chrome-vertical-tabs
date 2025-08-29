@@ -21,7 +21,8 @@ let tabGroups = {
 let groupOrder = ['ungrouped'];
 let dragSrcEl = null;
 let selectedTabs = new Set();
-let dragJustEnded = false;
+let isDragging = false;
+let isSidePanelInteracting = false; // Flag to track user interaction within the side panel
 
 // Context menu elements
 let contextMenu = null;
@@ -293,6 +294,7 @@ function renderTabs() {
         }
 
         tabEl.addEventListener('mousedown', (e) => {
+          isSidePanelInteracting = true;
           // Immediately activate tab on mousedown for responsiveness.
           if (!e.shiftKey && e.button === 0) {
             chrome.tabs.update(tab.id, { active: true });
@@ -301,11 +303,13 @@ function renderTabs() {
         });
 
         tabEl.addEventListener('mouseup', (e) => {
+          // Reset the flag after the event cycle, so onActivated can see it first.
+          setTimeout(() => { isSidePanelInteracting = false; }, 0);
+          
           if (e.shiftKey || e.button !== 0) return;
 
-          // If a drag operation just finished, don't treat this as a click.
-          if (dragJustEnded) {
-            dragJustEnded = false;
+          // If a drag operation is in progress, don't treat this as a click.
+          if (isDragging) {
             return;
           }
 
@@ -372,6 +376,8 @@ function moveGroup(groupId, direction) {
 }
 
 function handleDragStart(e) {
+  isSidePanelInteracting = true;
+  isDragging = true;
   const tabId = parseInt(this.dataset.tabId);
   if (!selectedTabs.has(tabId)) {
     selectedTabs.clear();
@@ -445,7 +451,9 @@ function handleDrop(e) {
 }
 
 function handleDragEnd(e) {
-  dragJustEnded = true; // Flag that a drag has ended to prevent mouseup from firing.
+  isDragging = false;
+  setTimeout(() => { isSidePanelInteracting = false; }, 0); // Also reset here
+
   const items = document.querySelectorAll('.tab-item');
   items.forEach(function(item) {
     item.classList.remove('dragging');
@@ -556,6 +564,14 @@ function updateTabs() {
 }
 
 async function handleTabActivation(activeInfo) {
+  if (isSidePanelInteracting) {
+    // If interaction is happening inside the side panel, the selection is managed
+    // by the tab's own event handlers. We just need to re-render for styling.
+    await debouncedUpdateTabs();
+    return;
+  }
+
+  // If the activation came from outside, sync the selection to the active tab.
   selectedTabs.clear();
   selectedTabs.add(activeInfo.tabId);
   await debouncedUpdateTabs();
