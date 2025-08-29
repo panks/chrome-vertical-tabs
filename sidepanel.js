@@ -317,7 +317,22 @@ function handleDrop(e) {
       const tabIndex = tabGroups[sourceGroupId].tabs.findIndex(t => t.id === tabId);
       if (tabIndex > -1) {
         const [tabToMove] = tabGroups[sourceGroupId].tabs.splice(tabIndex, 1);
-        tabGroups[targetGroupId].tabs.push(tabToMove);
+        const targetTabs = tabGroups[targetGroupId].tabs;
+
+        // Find correct insertion point to maintain sort order by windowId then tab index
+        const insertionIndex = targetTabs.findIndex(t =>
+          (t.windowId > tabToMove.windowId) ||
+          (t.windowId === tabToMove.windowId && t.index > tabToMove.index)
+        );
+
+        if (insertionIndex === -1) {
+          // If no tab should come after, add to the end
+          targetTabs.push(tabToMove);
+        } else {
+          // Insert at the correct position
+          targetTabs.splice(insertionIndex, 0, tabToMove);
+        }
+        
         chrome.runtime.sendMessage({ action: 'updateTabGroup', tabId: tabId, newGroupId: targetGroupId });
         break;
       }
