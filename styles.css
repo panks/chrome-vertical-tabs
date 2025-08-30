@@ -295,3 +295,52 @@ body.dark-mode .context-menu {
 body.dark-mode .context-menu-item:hover {
   background-color: #4a4a4a;
 }
+
+/* Session management buttons */
+.session-btn {
+  width: 100%;
+  padding: 8px 12px;
+  margin: 4px 0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background-color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.session-btn:hover {
+  background-color: #e9e9e9;
+}
+
+.session-btn:disabled {
+  background-color: #f5f5f5;
+  color: #999;
+  cursor: not-allowed;
+}
+
+body.dark-mode .session-btn {
+  background-color: #3c3c3c;
+  border-color: #555;
+  color: #f0f2f5;
+}
+
+body.dark-mode .session-btn:hover {
+  background-color: #4a4a4a;
+}
+
+body.dark-mode .session-btn:disabled {
+  background-color: #2b2b2b;
+  color: #666;
+}
+
+.session-info {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #666;
+  line-height: 1.4;
+}
+
+body.dark-mode .session-info {
+  color: #aaa;
+}
