@@ -250,7 +250,7 @@ function isRestorableUrl(url) {
 // Removed Chrome context menu - will be replaced with custom context menu in sidepanel
 
 chrome.tabs.onCreated.addListener(async (newTab) => {
-    let { tabGroupMap } = await getState();
+    let { tabGroupMap, windowData } = await getState();
     let openerGroupId;
 
     // Check if we should create a new session on tab creation
@@ -266,10 +266,19 @@ chrome.tabs.onCreated.addListener(async (newTab) => {
 
     // For duplicated tabs, openerTabId is set to the ID of the original tab.
     if (newTab.openerTabId) {
-        openerGroupId = tabGroupMap[newTab.openerTabId];
+        // Verify the opener tab is in the same window to prevent cross-window group inheritance
+        try {
+            const openerTab = await chrome.tabs.get(newTab.openerTabId);
+            if (openerTab && openerTab.windowId === newTab.windowId) {
+                openerGroupId = tabGroupMap[newTab.openerTabId];
+            }
+        } catch (error) {
+            console.warn('Could not get opener tab info:', error);
+        }
     }
 
     // Fallback for cases like "New Tab to the Right" where openerTabId is not set.
+    // Only inherit from tabs in the same window to prevent cross-window group leakage
     if (!openerGroupId && newTab.index > 0) {
         try {
             const [leftTab] = await chrome.tabs.query({
@@ -278,7 +287,15 @@ chrome.tabs.onCreated.addListener(async (newTab) => {
             });
 
             if (leftTab) {
-                openerGroupId = tabGroupMap[leftTab.id];
+                const leftTabGroupId = tabGroupMap[leftTab.id];
+                // Only inherit the group if it exists in the current window's group names
+                // This prevents inheriting group IDs from other windows
+                if (leftTabGroupId && leftTabGroupId !== 'ungrouped') {
+                    const windowGroups = windowData[newTab.windowId] ? windowData[newTab.windowId].groupNames : {};
+                    if (windowGroups[leftTabGroupId]) {
+                        openerGroupId = leftTabGroupId;
+                    }
+                }
             }
         } catch (error) {
             console.error('Error finding group for new tab:', error);
@@ -287,7 +304,7 @@ chrome.tabs.onCreated.addListener(async (newTab) => {
 
     if (openerGroupId) {
         tabGroupMap[newTab.id] = openerGroupId;
-        await setState({ tabGroupMap });
+        await setState({ tabGroupMap, windowData });
     }
     
     // Auto-save session after tab creation
