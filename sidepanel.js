@@ -85,6 +85,23 @@ function hideContextMenu() {
 }
 
 /**
+ * Puts a group name element into edit mode.
+ * @param {HTMLElement} groupNameEl The span element for the group name.
+ */
+function focusAndEditGroupName(groupNameEl) {
+  if (!groupNameEl) return;
+
+  groupNameEl.contentEditable = true;
+  groupNameEl.focus();
+
+  const selection = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(groupNameEl);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+/**
  * Handles the "Add to New Group" functionality
  */
 async function handleAddToNewGroup() {
@@ -110,14 +127,7 @@ async function handleAddToNewGroup() {
       const groupEl = document.querySelector(`.tab-group[data-group-id="${newGroupId}"]`);
       if (groupEl) {
         const groupNameEl = groupEl.querySelector('.group-name');
-        if (groupNameEl) {
-          groupNameEl.focus();
-          const selection = window.getSelection();
-          const range = document.createRange();
-          range.selectNodeContents(groupNameEl);
-          selection.removeAllRanges();
-          selection.addRange(range);
-        }
+        focusAndEditGroupName(groupNameEl);
       }
     }
   } catch (error) {
@@ -170,7 +180,22 @@ function renderTabs() {
     const groupName = document.createElement('span');
     groupName.className = 'group-name';
     groupName.textContent = group.name;
-    groupName.contentEditable = (groupId !== 'ungrouped');
+
+    if (groupId !== 'ungrouped') {
+      groupName.contentEditable = false;
+      groupName.addEventListener('dblclick', (e) => {
+        const el = e.currentTarget;
+        el.contentEditable = true;
+        el.focus();
+        // Select text for easy editing
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      });
+    }
+
     groupName.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
@@ -178,6 +203,9 @@ function renderTabs() {
         }
     });
     groupName.addEventListener('blur', async (e) => {
+      if (groupId !== 'ungrouped') {
+        e.currentTarget.contentEditable = false;
+      }
       const newName = e.target.textContent;
       if (newName.trim() !== '' && groupId !== 'ungrouped') {
         const oldName = tabGroups[groupId].name;
@@ -196,7 +224,7 @@ function renderTabs() {
           tabGroups[groupId].name = oldName;
           e.target.textContent = oldName;
         }
-      } else {
+      } else if (groupId !== 'ungrouped') {
         e.target.textContent = tabGroups[groupId].name;
       }
     });
@@ -628,14 +656,7 @@ newGroupBtn.addEventListener('click', async () => {
       const groupEl = document.querySelector(`.tab-group[data-group-id="${newGroupId}"]`);
       if (groupEl) {
         const groupNameEl = groupEl.querySelector('.group-name');
-        if (groupNameEl) {
-          groupNameEl.focus();
-          const selection = window.getSelection();
-          const range = document.createRange();
-          range.selectNodeContents(groupNameEl);
-          selection.removeAllRanges();
-          selection.addRange(range);
-        }
+        focusAndEditGroupName(groupNameEl);
       }
     }
   } catch (error) {
