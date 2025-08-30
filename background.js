@@ -40,6 +40,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ tabGroupMap: tabGroupMap, groupNames: groupNames });
     } else if (message.action === 'updateTabGroup') {
         tabGroupMap[message.tabId] = message.newGroupId;
+        sendResponse({ success: true }); // Acknowledge the message
     } else if (message.action === 'addTabToNewGroup') {
         // Create new group and add tab to it
         const newGroupId = message.groupId || `group-${Date.now()}`;
@@ -54,6 +55,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message.groupId && message.groupName) {
             groupNames[message.groupId] = message.groupName;
             sendResponse({ success: true });
+        } else {
+            sendResponse({ success: false, error: 'Invalid parameters for group name update.' });
         }
     } else if (message.action === 'createGroup') {
         const newGroupId = message.groupId || `group-${Date.now()}`;
