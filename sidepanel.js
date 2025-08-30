@@ -92,7 +92,12 @@ function hideContextMenu() {
 function focusAndEditGroupName(groupNameEl) {
   if (!groupNameEl) return;
 
+  // Extract the group name without the tab count for editing
+  const fullText = groupNameEl.textContent;
+  const groupNameOnly = fullText.replace(/\s*\[\d+\]$/, ''); // Remove " [number]" at the end
+  
   groupNameEl.contentEditable = true;
+  groupNameEl.textContent = groupNameOnly;
   groupNameEl.focus();
 
   const selection = window.getSelection();
@@ -181,13 +186,17 @@ function renderTabs() {
     
     const groupName = document.createElement('span');
     groupName.className = 'group-name';
-    groupName.textContent = group.name;
+    // Display group name with tab count in square brackets
+    const tabCount = group.tabs.length;
+    groupName.textContent = `${group.name} [${tabCount}]`;
 
     if (groupId !== 'ungrouped') {
       groupName.contentEditable = false;
       groupName.addEventListener('dblclick', (e) => {
         const el = e.currentTarget;
         el.contentEditable = true;
+        // Show only the group name for editing (without tab count)
+        el.textContent = group.name;
         el.focus();
         // Select text for easy editing
         const selection = window.getSelection();
@@ -211,7 +220,7 @@ function renderTabs() {
       const newName = e.target.textContent;
       if (newName.trim() !== '' && groupId !== 'ungrouped') {
         const oldName = tabGroups[groupId].name;
-        tabGroups[groupId].name = newName;
+        tabGroups[groupId].name = newName.trim();
         
         // Sync group name change to background script
         try {
@@ -221,14 +230,20 @@ function renderTabs() {
             groupName: newName.trim(),
             windowId: sidepanelWindowId
           });
+          // Update display with new name and tab count
+          const currentTabCount = tabGroups[groupId].tabs.length;
+          e.target.textContent = `${newName.trim()} [${currentTabCount}]`;
         } catch (error) {
           console.warn('Failed to update group name in background script:', error);
           // Revert on error
           tabGroups[groupId].name = oldName;
-          e.target.textContent = oldName;
+          const currentTabCount = tabGroups[groupId].tabs.length;
+          e.target.textContent = `${oldName} [${currentTabCount}]`;
         }
       } else if (groupId !== 'ungrouped') {
-        e.target.textContent = tabGroups[groupId].name;
+        // Restore display with tab count if edit was cancelled
+        const currentTabCount = tabGroups[groupId].tabs.length;
+        e.target.textContent = `${tabGroups[groupId].name} [${currentTabCount}]`;
       }
     });
 
