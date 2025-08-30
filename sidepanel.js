@@ -182,6 +182,11 @@ function renderTabs() {
         renderTabs();
       });
       groupHeaderLeft.appendChild(collapseBtn);
+      
+      // Make group header draggable for reordering groups
+      groupHeader.draggable = true;
+      groupHeader.addEventListener('dragstart', handleGroupDragStart);
+      groupHeader.addEventListener('dragend', handleGroupDragEnd);
     }
     
     const groupName = document.createElement('span');
@@ -461,8 +466,15 @@ async function handleDrop(e) {
   const droppedOnGroupEl = this.closest('.tab-group');
   if (!droppedOnGroupEl) return false;
 
+  // Check if we're dropping a group (for reordering)
+  const groupData = e.dataTransfer.getData('application/group-json');
+  if (groupData) {
+    return handleGroupDrop(e, droppedOnGroupEl, groupData);
+  }
+
+  // Handle tab drops (existing functionality)
   const targetGroupId = droppedOnGroupEl.dataset.groupId;
-  const tabIdsToMove = JSON.parse(e.dataTransfer.getData('application/json'));
+  const tabIdsToMove = JSON.parse(e.dataTransfer.getData('application/json') || '[]');
 
   if (!Array.isArray(tabIdsToMove) || tabIdsToMove.length === 0) {
     return false;
@@ -510,6 +522,41 @@ async function handleDrop(e) {
   return false;
 }
 
+/**
+ * Handles dropping a group for reordering
+ */
+function handleGroupDrop(e, droppedOnGroupEl, groupData) {
+  const parsedGroupData = JSON.parse(groupData);
+  const draggedGroupId = parsedGroupData.groupId;
+  const targetGroupId = droppedOnGroupEl.dataset.groupId;
+  
+  // Don't allow dropping on the same group or on ungrouped
+  if (draggedGroupId === targetGroupId || targetGroupId === 'ungrouped' || draggedGroupId === 'ungrouped') {
+    return false;
+  }
+  
+  // Find indices in the group order
+  const draggedIndex = groupOrder.indexOf(draggedGroupId);
+  const targetIndex = groupOrder.indexOf(targetGroupId);
+  
+  if (draggedIndex === -1 || targetIndex === -1) {
+    return false;
+  }
+  
+  // Remove the dragged group from its current position
+  groupOrder.splice(draggedIndex, 1);
+  
+  // Insert it at the target position
+  // If we removed an item before the target, adjust the target index
+  const adjustedTargetIndex = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
+  groupOrder.splice(adjustedTargetIndex, 0, draggedGroupId);
+  
+  // Re-render to show the new order
+  renderTabs();
+  
+  return false;
+}
+
 function handleDragEnd(e) {
   isDragging = false;
   setTimeout(() => { isSidePanelInteracting = false; }, 0); // Also reset here
@@ -517,6 +564,35 @@ function handleDragEnd(e) {
   const items = document.querySelectorAll('.tab-item');
   items.forEach(function(item) {
     item.classList.remove('dragging');
+  });
+}
+
+/**
+ * Handles the start of a group drag operation
+ */
+function handleGroupDragStart(e) {
+  isSidePanelInteracting = true;
+  isDragging = true;
+  
+  const groupEl = this.closest('.tab-group');
+  const groupId = groupEl.dataset.groupId;
+  
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('application/group-json', JSON.stringify({ groupId: groupId }));
+  
+  groupEl.classList.add('dragging');
+}
+
+/**
+ * Handles the end of a group drag operation
+ */
+function handleGroupDragEnd(e) {
+  isDragging = false;
+  setTimeout(() => { isSidePanelInteracting = false; }, 0);
+  
+  const groupElements = document.querySelectorAll('.tab-group');
+  groupElements.forEach(function(group) {
+    group.classList.remove('dragging');
   });
 }
 
