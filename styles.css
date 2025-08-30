@@ -62,13 +62,15 @@ body.dark-mode .tab-group {
   justify-content: space-between;
   align-items: center;
   padding: 5px 8px;
-  background-color: #e8e8e8;
-  border-bottom: 1px solid #ddd;
+  background-color: #c8e6c9; /* Light Green */
+  color: #388e3c; /* Dark Green text */
+  border-bottom: 1px solid #a5d6a7;
 }
 
 body.dark-mode .group-header {
-  background-color: #2b2b2b;
-  border-bottom-color: #555;
+  background-color: #2e7d32; /* Dark Green */
+  color: #c8e6c9; /* Light Green text */
+  border-bottom-color: #1b5e20;
 }
 
 .group-header-left {
@@ -105,15 +107,15 @@ body.dark-mode .group-name[contenteditable="true"]:focus {
   font-size: 16px;
   font-weight: bold;
   padding: 0 8px 0 0;
-  color: #555;
+  color: #388e3c;
 }
 
 .collapse-btn:hover {
-  color: #000;
+  color: #1b5e20;
 }
 
 body.dark-mode .collapse-btn {
-  color: #aaa;
+  color: #c8e6c9;
 }
 
 body.dark-mode .collapse-btn:hover {
@@ -123,13 +125,13 @@ body.dark-mode .collapse-btn:hover {
 .delete-group-btn {
   border: none;
   background: none;
-  color: #888;
+  color: #388e3c;
   cursor: pointer;
   font-size: 14px;
 }
 
 body.dark-mode .delete-group-btn {
-  color: #aaa;
+  color: #c8e6c9;
 }
 
 .delete-group-btn:hover {
@@ -150,21 +152,21 @@ body.dark-mode .delete-group-btn:hover {
   background: none;
   cursor: pointer;
   font-size: 12px;
-  color: #888;
+  color: #388e3c;
   padding: 0 4px;
 }
 
 .move-group-btn:hover:not(:disabled) {
-  color: #000;
+  color: #1b5e20;
 }
 
 .move-group-btn:disabled {
-  color: #ccc;
+  color: #a5d6a7;
   cursor: not-allowed;
 }
 
 body.dark-mode .move-group-btn {
-  color: #aaa;
+  color: #c8e6c9;
 }
 
 body.dark-mode .move-group-btn:hover:not(:disabled) {
@@ -172,7 +174,7 @@ body.dark-mode .move-group-btn:hover:not(:disabled) {
 }
 
 body.dark-mode .move-group-btn:disabled {
-  color: #666;
+  color: #66bb6a;
 }
 
 .tab-list {
