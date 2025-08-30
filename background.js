@@ -55,9 +55,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message.action === 'getTabGroupMap') {
             const { tabGroupMap, groupNames } = await getState();
             sendResponse({ tabGroupMap: tabGroupMap, groupNames: groupNames });
-        } else if (message.action === 'updateTabGroup') {
+        } else if (message.action === 'updateMultipleTabGroups') {
             const { tabGroupMap } = await getState();
-            tabGroupMap[message.tabId] = message.newGroupId;
+            message.tabIds.forEach(tabId => {
+                tabGroupMap[tabId] = message.newGroupId;
+            });
             await setState({ tabGroupMap });
             sendResponse({ success: true });
         } else if (message.action === 'addTabToNewGroup') {

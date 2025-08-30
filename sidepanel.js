@@ -405,7 +405,7 @@ function handleDragOver(e) {
   return false;
 }
 
-function handleDrop(e) {
+async function handleDrop(e) {
   if (e.stopPropagation) {
     e.stopPropagation();
   }
@@ -420,9 +420,22 @@ function handleDrop(e) {
     return false;
   }
 
+  // Atomically update the background script with the new group for all moved tabs.
+  try {
+    await chrome.runtime.sendMessage({
+      action: 'updateMultipleTabGroups',
+      tabIds: tabIdsToMove,
+      newGroupId: targetGroupId
+    });
+  } catch (error) {
+    console.error('Failed to update tab groups in background:', error);
+    // Optionally, revert local changes or show an error to the user
+    return false; // Stop execution if the background update fails
+  }
+
   const tabsMoved = [];
 
-  // Atomically find, remove, and collect tabs to be moved from all groups.
+  // After successful background update, update the local state for immediate UI feedback.
   for (const sourceGroupId in tabGroups) {
     tabGroups[sourceGroupId].tabs = tabGroups[sourceGroupId].tabs.filter(tab => {
       if (tabIdsToMove.includes(tab.id)) {
@@ -432,11 +445,6 @@ function handleDrop(e) {
       return true; // Keep in the source group
     });
   }
-
-  // Update the background script with the new group for each moved tab.
-  tabsMoved.forEach(tab => {
-    chrome.runtime.sendMessage({ action: 'updateTabGroup', tabId: tab.id, newGroupId: targetGroupId });
-  });
 
   // Add all moved tabs to the target group and sort them.
   const targetTabs = tabGroups[targetGroupId].tabs;
