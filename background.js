@@ -29,29 +29,161 @@ function debouncedAutoSave() {
 
 /**
  * Auto-saves the current session state to persistent storage
+ * Only updates existing session, never creates a new one
  */
 async function autoSaveSession() {
+    console.log('Auto-saving session. Current time:', new Date().toISOString());
     try {
         const sessionState = await collectSessionState();
-        
-        // Check if we have existing saved data and current state is minimal
-        const existingData = await chrome.storage.local.get(['savedSession']);
         const totalCurrentTabs = sessionState.windows.reduce((sum, w) => sum + w.tabs.length, 0);
         
-        if (existingData.savedSession && totalCurrentTabs === 0) {
+        // Skip saving sessions with no restorable tabs
+        if (totalCurrentTabs === 0) {
             return;
         }
         
-        // Only auto-save if we have meaningful data (at least 1 tab)
-        if (totalCurrentTabs > 0) {
-            await chrome.storage.local.set({ 
-                savedSession: sessionState,
-                lastSaved: Date.now()
-            });
-        }
+        // Only update existing session, never create new one during auto-save
+        await updateCurrentSession(sessionState);
     } catch (error) {
         console.error('Error auto-saving session:', error);
     }
+}
+
+/**
+ * Migrates from old single-session storage to new multi-session storage
+ */
+async function migrateFromOldStorage() {
+    const oldData = await chrome.storage.local.get(['savedSession', 'lastSaved']);
+    const newData = await chrome.storage.local.get(['sessions']);
+    
+    // If we have old data but no new data, migrate it
+    if (oldData.savedSession && !newData.sessions) {
+        console.log('Migrating from old session storage format...');
+        
+        const legacySession = oldData.savedSession;
+        const totalTabs = legacySession.windows.reduce((sum, w) => sum + w.tabs.length, 0);
+        const windowCount = legacySession.windows.length;
+        
+        const migratedSession = {
+            id: `session-${oldData.lastSaved || Date.now()}`,
+            timestamp: oldData.lastSaved || legacySession.timestamp || Date.now(),
+            totalTabs,
+            windowCount,
+            windows: legacySession.windows,
+            groupNames: {} // Legacy sessions don't have group names
+        };
+        
+        await chrome.storage.local.set({ sessions: [migratedSession] });
+        
+        // Clean up old storage
+        await chrome.storage.local.remove(['savedSession', 'lastSaved']);
+        
+        console.log('Migration completed successfully');
+    }
+}
+
+/**
+ * Gets the session configuration with defaults
+ */
+async function getSessionConfig() {
+    const result = await chrome.storage.local.get(['sessionConfig']);
+    return {
+        maxSessions: 3,
+        ...result.sessionConfig
+    };
+}
+
+/**
+ * Gets all stored sessions
+ */
+async function getStoredSessions() {
+    const result = await chrome.storage.local.get(['sessions']);
+    return result.sessions || [];
+}
+
+/**
+ * Determines if we should create a new session based on current state
+ */
+async function shouldCreateNewSession() {
+    const sessions = await getStoredSessions();
+    
+    // If no sessions exist, create the first one
+    if (sessions.length === 0) {
+        return true;
+    }
+    
+    // Check if this appears to be a fresh browser start
+    // (single window with minimal tabs that might be new tab pages or restored tabs)
+    const allWindows = await chrome.windows.getAll();
+    const totalTabs = await chrome.tabs.query({});
+    
+    // If we have only one window and very few tabs, and the last session 
+    // has significantly more data, this might be a fresh start
+    if (allWindows.length === 1 && totalTabs.length <= 2) {
+        const lastSession = sessions[0]; // Most recent session
+        if (lastSession && lastSession.totalTabs > 3) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+/**
+ * Creates a new session and adds it to storage
+ */
+async function createNewSession(sessionState) {
+    const sessions = await getStoredSessions();
+    const config = await getSessionConfig();
+    
+    const totalTabs = sessionState.windows.reduce((sum, w) => sum + w.tabs.length, 0);
+    const windowCount = sessionState.windows.length;
+    
+    const newSession = {
+        id: `session-${Date.now()}`,
+        timestamp: Date.now(),
+        totalTabs,
+        windowCount,
+        windows: sessionState.windows,
+        groupNames: sessionState.groupNames || {}
+    };
+    
+    // Add new session to the beginning of the array
+    sessions.unshift(newSession);
+    
+    // Keep only the configured number of sessions
+    const trimmedSessions = sessions.slice(0, config.maxSessions);
+    
+    await chrome.storage.local.set({ sessions: trimmedSessions });
+    return newSession;
+}
+
+/**
+ * Updates the most recent session with current state
+ */
+async function updateCurrentSession(sessionState) {
+    const sessions = await getStoredSessions();
+    
+    if (sessions.length === 0) {
+        // No existing sessions, create a new one
+        return await createNewSession(sessionState);
+    }
+    
+    const totalTabs = sessionState.windows.reduce((sum, w) => sum + w.tabs.length, 0);
+    const windowCount = sessionState.windows.length;
+    
+    // Update the most recent session (first in array)
+    sessions[0] = {
+        ...sessions[0],
+        timestamp: Date.now(),
+        totalTabs,
+        windowCount,
+        windows: sessionState.windows,
+        groupNames: sessionState.groupNames || {}
+    };
+    
+    await chrome.storage.local.set({ sessions });
+    return sessions[0];
 }
 
 /**
@@ -61,10 +193,14 @@ async function collectSessionState() {
     const { tabGroupMap, windowData } = await getState();
     const allWindows = await chrome.windows.getAll();
     const sessionWindows = [];
+    const allGroupNames = {};
 
     for (const window of allWindows) {
         const tabs = await chrome.tabs.query({ windowId: window.id });
         const windowGroups = windowData[window.id] ? windowData[window.id].groupNames : {};
+        
+        // Collect all group names across windows
+        Object.assign(allGroupNames, windowGroups);
         
         // Filter out invalid URLs that can't be restored
         const sessionTabs = tabs
@@ -87,6 +223,7 @@ async function collectSessionState() {
 
     return {
         windows: sessionWindows,
+        groupNames: allGroupNames,
         timestamp: Date.now()
     };
 }
@@ -115,6 +252,17 @@ function isRestorableUrl(url) {
 chrome.tabs.onCreated.addListener(async (newTab) => {
     let { tabGroupMap } = await getState();
     let openerGroupId;
+
+    // Check if we should create a new session on tab creation
+    // This handles the case where browser was restarted and first tab is created
+    if (await shouldCreateNewSession()) {
+        try {
+            const sessionState = await collectSessionState();
+            await createNewSession(sessionState);
+        } catch (error) {
+            console.error('Error creating new session on tab creation:', error);
+        }
+    }
 
     // For duplicated tabs, openerTabId is set to the ID of the original tab.
     if (newTab.openerTabId) {
@@ -265,56 +413,94 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 sendResponse({ success: false, error: 'Group ID and Window ID are required' });
             }
         } else if (message.action === 'saveSession') {
-            // Manual save session (bypasses auto-save protection)
+            // Manual save session (updates current session, doesn't create new one)
             try {
                 const sessionState = await collectSessionState();
-                await chrome.storage.local.set({ 
-                    savedSession: sessionState,
-                    lastSaved: Date.now()
-                });
+                const totalTabs = sessionState.windows.reduce((sum, w) => sum + w.tabs.length, 0);
+                
+                if (totalTabs === 0) {
+                    sendResponse({ success: false, error: 'No restorable tabs to save' });
+                    return;
+                }
+                
+                await updateCurrentSession(sessionState);
                 sendResponse({ success: true, message: 'Session saved successfully' });
             } catch (error) {
                 console.error('Error saving session:', error);
                 sendResponse({ success: false, error: 'Failed to save session' });
             }
         } else if (message.action === 'restoreSession') {
-            // Restore saved session
+            // Restore selected session
             try {
-                const result = await chrome.storage.local.get(['savedSession']);
-                if (!result.savedSession) {
-                    sendResponse({ success: false, error: 'No saved session found' });
+                const { sessionId } = message;
+                const sessions = await getStoredSessions();
+                
+                if (sessions.length === 0) {
+                    sendResponse({ success: false, error: 'No saved sessions found' });
                     return;
                 }
                 
-                const sessionState = result.savedSession;
-                await restoreSession(sessionState);
+                let sessionToRestore;
+                if (sessionId) {
+                    sessionToRestore = sessions.find(s => s.id === sessionId);
+                    if (!sessionToRestore) {
+                        sendResponse({ success: false, error: 'Selected session not found' });
+                        return;
+                    }
+                } else {
+                    // Default to most recent session
+                    sessionToRestore = sessions[0];
+                }
+                
+                await restoreSession(sessionToRestore);
                 sendResponse({ success: true, message: 'Session restored successfully' });
             } catch (error) {
                 console.error('Error restoring session:', error);
                 sendResponse({ success: false, error: 'Failed to restore session' });
             }
-        } else if (message.action === 'getSavedSessionInfo') {
-            // Get information about saved session
+        } else if (message.action === 'getStoredSessions') {
+            // Get information about all stored sessions
             try {
-                const result = await chrome.storage.local.get(['savedSession', 'lastSaved']);
-                if (!result.savedSession) {
-                    sendResponse({ success: false, error: 'No saved session found' });
-                    return;
-                }
-                
-                const totalTabs = result.savedSession.windows.reduce((sum, window) => sum + window.tabs.length, 0);
-                const windowCount = result.savedSession.windows.length;
-                
+                const sessions = await getStoredSessions();
                 sendResponse({ 
                     success: true, 
-                    totalTabs, 
-                    windowCount, 
-                    lastSaved: result.lastSaved,
-                    timestamp: result.savedSession.timestamp
+                    sessions: sessions.map(session => ({
+                        id: session.id,
+                        timestamp: session.timestamp,
+                        totalTabs: session.totalTabs,
+                        windowCount: session.windowCount
+                    }))
                 });
             } catch (error) {
-                console.error('Error getting saved session info:', error);
+                console.error('Error getting stored sessions:', error);
                 sendResponse({ success: false, error: 'Failed to get session info' });
+            }
+        } else if (message.action === 'getSessionConfig') {
+            // Get session configuration
+            try {
+                const config = await getSessionConfig();
+                sendResponse({ success: true, config });
+            } catch (error) {
+                console.error('Error getting session config:', error);
+                sendResponse({ success: false, error: 'Failed to get session config' });
+            }
+        } else if (message.action === 'updateSessionConfig') {
+            // Update session configuration
+            try {
+                const { config } = message;
+                await chrome.storage.local.set({ sessionConfig: config });
+                
+                // Trim sessions if max count was reduced
+                const sessions = await getStoredSessions();
+                if (sessions.length > config.maxSessions) {
+                    const trimmedSessions = sessions.slice(0, config.maxSessions);
+                    await chrome.storage.local.set({ sessions: trimmedSessions });
+                }
+                
+                sendResponse({ success: true, message: 'Session config updated successfully' });
+            } catch (error) {
+                console.error('Error updating session config:', error);
+                sendResponse({ success: false, error: 'Failed to update session config' });
             }
         }
     })();
@@ -324,12 +510,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 /**
  * Restores a saved session by creating new windows and tabs
  */
-async function restoreSession(sessionState) {
-    if (!sessionState || !sessionState.windows || sessionState.windows.length === 0) {
+async function restoreSession(session) {
+    if (!session || !session.windows || session.windows.length === 0) {
         throw new Error('No valid session data to restore');
     }
     
-    for (const windowData of sessionState.windows) {
+    // Get current state
+    const { tabGroupMap, windowData: currentWindowData } = await getState();
+    
+    for (const windowData of session.windows) {
         // Skip empty windows
         if (!windowData.tabs || windowData.tabs.length === 0) {
             continue;
@@ -347,14 +536,18 @@ async function restoreSession(sessionState) {
             const newWindowId = newWindow.id;
             const firstTabId = newWindow.tabs[0].id;
             
-            // Update our internal state for the first tab
-            const { tabGroupMap, windowData: currentWindowData } = await getState();
-            
-            // Set up group names for this window
+            // Set up group names for this window - use both window-specific and session-wide group names
             if (!currentWindowData[newWindowId]) {
                 currentWindowData[newWindowId] = { groupNames: {} };
             }
-            currentWindowData[newWindowId].groupNames = { ...windowData.groupNames };
+            
+            // Merge window-specific group names with session-wide group names
+            const windowGroupNames = windowData.groupNames || {};
+            const sessionGroupNames = session.groupNames || {};
+            currentWindowData[newWindowId].groupNames = { 
+                ...sessionGroupNames, 
+                ...windowGroupNames 
+            };
             
             // Set group for first tab
             if (firstTab.groupId && firstTab.groupId !== 'ungrouped') {
@@ -382,12 +575,17 @@ async function restoreSession(sessionState) {
                 }
             }
             
-            // Save the updated state
-            await setState({ tabGroupMap, windowData: currentWindowData });
-            
         } catch (windowError) {
             console.error('Error restoring window:', windowError);
             // Continue with other windows even if one fails
         }
     }
+    
+    // Save the updated state after all windows are processed
+    await setState({ tabGroupMap, windowData: currentWindowData });
 }
+
+// Run migration on startup
+chrome.runtime.onStartup.addListener(migrateFromOldStorage);
+chrome.runtime.onInstalled.addListener(migrateFromOldStorage);
+

@@ -25,9 +25,23 @@
   </div>
   <div class="settings-container">
     <h3>Session Management</h3>
-    <button id="save-session-btn" class="session-btn">Save State</button>
-    <button id="restore-session-btn" class="session-btn">Restore Last State</button>
+    <button id="save-session-btn" class="session-btn">Save Current State</button>
+    
+    <div class="session-restore-section">
+      <label for="session-select">Restore Session:</label>
+      <select id="session-select" class="session-select">
+        <option value="">Select a session...</option>
+      </select>
+      <button id="restore-session-btn" class="session-btn" disabled>Restore Selected</button>
+    </div>
+    
     <div id="session-info" class="session-info"></div>
+    
+    <div class="session-config-section">
+      <label for="max-sessions">Max Sessions to Store:</label>
+      <input type="number" id="max-sessions" min="1" max="10" value="3" class="session-config-input">
+      <button id="save-config-btn" class="session-config-btn">Save</button>
+    </div>
   </div>
   <script src="popup.js"></script>
 </body>

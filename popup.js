@@ -3,7 +3,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const themeRadios = document.querySelectorAll('input[name="theme"]');
   const saveSessionBtn = document.getElementById('save-session-btn');
   const restoreSessionBtn = document.getElementById('restore-session-btn');
+  const sessionSelect = document.getElementById('session-select');
   const sessionInfo = document.getElementById('session-info');
+  const maxSessionsInput = document.getElementById('max-sessions');
+  const saveConfigBtn = document.getElementById('save-config-btn');
   
   chrome.storage.local.get(['sidebarPosition', 'theme'], (result) => {
     const currentPosition = result.sidebarPosition || 'left'; // Default to left
@@ -51,21 +54,69 @@ document.addEventListener('DOMContentLoaded', () => {
   // Session management functionality
   
   /**
-   * Updates the session info display with saved session details
+   * Formats a timestamp as a relative time string
+   */
+  function formatRelativeTime(timestamp) {
+    const now = Date.now();
+    const diff = now - timestamp;
+    
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) {
+      return `${days} day${days > 1 ? 's' : ''} ago`;
+    } else if (hours > 0) {
+      return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+    } else if (minutes > 0) {
+      return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+    } else {
+      return 'Just now';
+    }
+  }
+
+  /**
+   * Updates the session dropdown and info display
    */
   function updateSessionInfo() {
-    chrome.runtime.sendMessage({ action: 'getSavedSessionInfo' }, (response) => {
-      if (response && response.success) {
-        const lastSavedDate = new Date(response.lastSaved);
-        const formattedDate = lastSavedDate.toLocaleDateString() + ' ' + lastSavedDate.toLocaleTimeString();
-        sessionInfo.innerHTML = `
-          Last saved: ${formattedDate}<br>
-          ${response.totalTabs} tabs in ${response.windowCount} window(s)
-        `;
-        restoreSessionBtn.disabled = false;
+    chrome.runtime.sendMessage({ action: 'getStoredSessions' }, (response) => {
+      // Clear existing options
+      sessionSelect.innerHTML = '<option value="">Select a session...</option>';
+      
+      if (response && response.success && response.sessions.length > 0) {
+        response.sessions.forEach(session => {
+          const option = document.createElement('option');
+          option.value = session.id;
+          const relativeTime = formatRelativeTime(session.timestamp);
+          option.textContent = `${relativeTime} - ${session.totalTabs} tabs, ${session.windowCount} window${session.windowCount > 1 ? 's' : ''}`;
+          sessionSelect.appendChild(option);
+        });
+        
+        sessionInfo.textContent = `${response.sessions.length} session${response.sessions.length > 1 ? 's' : ''} available`;
       } else {
-        sessionInfo.textContent = 'No saved session found';
-        restoreSessionBtn.disabled = true;
+        sessionInfo.textContent = 'No saved sessions found';
+      }
+      
+      // Update restore button state
+      updateRestoreButtonState();
+    });
+  }
+
+  /**
+   * Updates the restore button state based on selection
+   */
+  function updateRestoreButtonState() {
+    restoreSessionBtn.disabled = !sessionSelect.value;
+  }
+
+  /**
+   * Loads and displays the session configuration
+   */
+  function loadSessionConfig() {
+    chrome.runtime.sendMessage({ action: 'getSessionConfig' }, (response) => {
+      if (response && response.success) {
+        maxSessionsInput.value = response.config.maxSessions;
       }
     });
   }
@@ -86,7 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       
       saveSessionBtn.disabled = false;
-      saveSessionBtn.textContent = 'Save State';
+      saveSessionBtn.textContent = 'Save Current State';
     });
   }
 
@@ -94,28 +145,68 @@ document.addEventListener('DOMContentLoaded', () => {
    * Handles restore session with confirmation
    */
   function handleRestoreSession() {
-    chrome.runtime.sendMessage({ action: 'getSavedSessionInfo' }, (response) => {
+    const selectedSessionId = sessionSelect.value;
+    if (!selectedSessionId) {
+      showTemporaryMessage('Please select a session to restore', 'error');
+      return;
+    }
+
+    // Get session details for confirmation
+    chrome.runtime.sendMessage({ action: 'getStoredSessions' }, (response) => {
       if (response && response.success) {
-        const confirmMessage = `This will restore ${response.totalTabs} tabs in ${response.windowCount} new window(s). Continue?`;
-        
-        if (confirm(confirmMessage)) {
-          restoreSessionBtn.disabled = true;
-          restoreSessionBtn.textContent = 'Restoring...';
+        const selectedSession = response.sessions.find(s => s.id === selectedSessionId);
+        if (selectedSession) {
+          const confirmMessage = `This will restore ${selectedSession.totalTabs} tabs in ${selectedSession.windowCount} new window(s). Continue?`;
           
-          chrome.runtime.sendMessage({ action: 'restoreSession' }, (restoreResponse) => {
-            if (restoreResponse && restoreResponse.success) {
-              showTemporaryMessage('Session restored successfully!', 'success');
-            } else {
-              showTemporaryMessage('Failed to restore session: ' + (restoreResponse?.error || 'Unknown error'), 'error');
-            }
+          if (confirm(confirmMessage)) {
+            restoreSessionBtn.disabled = true;
+            restoreSessionBtn.textContent = 'Restoring...';
             
-            restoreSessionBtn.disabled = false;
-            restoreSessionBtn.textContent = 'Restore Last State';
-          });
+            chrome.runtime.sendMessage({ 
+              action: 'restoreSession',
+              sessionId: selectedSessionId
+            }, (restoreResponse) => {
+              if (restoreResponse && restoreResponse.success) {
+                showTemporaryMessage('Session restored successfully!', 'success');
+              } else {
+                showTemporaryMessage('Failed to restore session: ' + (restoreResponse?.error || 'Unknown error'), 'error');
+              }
+              
+              restoreSessionBtn.disabled = false;
+              restoreSessionBtn.textContent = 'Restore Selected';
+            });
+          }
         }
-      } else {
-        showTemporaryMessage('No saved session found', 'error');
       }
+    });
+  }
+
+  /**
+   * Handles saving session configuration
+   */
+  function handleSaveConfig() {
+    const maxSessions = parseInt(maxSessionsInput.value);
+    if (isNaN(maxSessions) || maxSessions < 1 || maxSessions > 10) {
+      showTemporaryMessage('Please enter a valid number between 1 and 10', 'error');
+      return;
+    }
+
+    saveConfigBtn.disabled = true;
+    saveConfigBtn.textContent = 'Saving...';
+    
+    chrome.runtime.sendMessage({ 
+      action: 'updateSessionConfig',
+      config: { maxSessions }
+    }, (response) => {
+      if (response && response.success) {
+        showTemporaryMessage('Configuration saved successfully!', 'success');
+        updateSessionInfo(); // Refresh session list in case sessions were trimmed
+      } else {
+        showTemporaryMessage('Failed to save configuration: ' + (response?.error || 'Unknown error'), 'error');
+      }
+      
+      saveConfigBtn.disabled = false;
+      saveConfigBtn.textContent = 'Save';
     });
   }
 
@@ -145,10 +236,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 3000);
   }
 
-  // Event listeners for session buttons
+  // Event listeners for session controls
   saveSessionBtn.addEventListener('click', handleSaveSession);
   restoreSessionBtn.addEventListener('click', handleRestoreSession);
+  sessionSelect.addEventListener('change', updateRestoreButtonState);
+  saveConfigBtn.addEventListener('click', handleSaveConfig);
 
-  // Update session info on load
+  // Initialize session management on load
+  loadSessionConfig();
   updateSessionInfo();
 });
