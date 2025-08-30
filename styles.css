@@ -18,9 +18,11 @@ body.dark-mode {
 
 #controls {
   margin-bottom: 10px;
+  display: flex;
+  gap: 8px;
 }
 
-#new-group-btn {
+#new-group-btn, #sort-tabs-btn {
   width: 100%;
   padding: 8px;
   border: 1px solid #ccc;
@@ -29,17 +31,17 @@ body.dark-mode {
   cursor: pointer;
 }
 
-body.dark-mode #new-group-btn {
+body.dark-mode #new-group-btn, body.dark-mode #sort-tabs-btn {
   background-color: #3c3c3c;
   border-color: #555;
   color: #f0f2f5;
 }
 
-#new-group-btn:hover {
+#new-group-btn:hover, #sort-tabs-btn:hover {
   background-color: #e9e9e9;
 }
 
-body.dark-mode #new-group-btn:hover {
+body.dark-mode #new-group-btn:hover, body.dark-mode #sort-tabs-btn:hover {
   background-color: #4a4a4a;
 }
 

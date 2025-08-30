@@ -14,6 +14,7 @@
 
 const tabsContainer = document.getElementById('tabs-container');
 const newGroupBtn = document.getElementById('new-group-btn');
+const sortTabsBtn = document.getElementById('sort-tabs-btn');
 
 let tabGroups = {
   ungrouped: { name: 'Ungrouped', tabs: [] }
@@ -588,6 +589,27 @@ async function handleTabActivation(activeInfo) {
   await debouncedUpdateTabs();
 }
 
+async function sortBrowserTabs() {
+  // Disable the button to prevent multiple clicks
+  sortTabsBtn.disabled = true;
+
+  try {
+    const tabIdsInOrder = groupOrder.flatMap(groupId =>
+      (tabGroups[groupId] ? tabGroups[groupId].tabs : []).map(tab => tab.id)
+    );
+
+    if (tabIdsInOrder.length > 0) {
+      // This moves all the tabs to the start of the window, in the specified order.
+      await chrome.tabs.move(tabIdsInOrder, { index: 0 });
+    }
+  } catch (error) {
+    console.error('Error sorting tabs:', error);
+    alert('Failed to sort tabs. Please check the console for more details.');
+  } finally {
+    // Re-enable the button after the operation is complete
+    sortTabsBtn.disabled = false;
+  }
+}
 
 newGroupBtn.addEventListener('click', async () => {
   const newGroupId = `group-${Date.now()}`;
@@ -621,6 +643,8 @@ newGroupBtn.addEventListener('click', async () => {
     alert('Failed to create new group. Please try again.');
   }
 });
+
+sortTabsBtn.addEventListener('click', sortBrowserTabs);
 
 chrome.tabs.onCreated.addListener(updateTabs);
 chrome.tabs.onUpdated.addListener(updateTabs);
