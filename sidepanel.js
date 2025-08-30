@@ -23,6 +23,7 @@ let groupOrder = ['ungrouped'];
 let selectedTabs = new Set();
 let isDragging = false;
 let isSidePanelInteracting = false; // Flag to track user interaction within the side panel
+let sidepanelWindowId = null;
 
 // Context menu elements
 let contextMenu = null;
@@ -118,7 +119,8 @@ async function handleAddToNewGroup() {
       action: 'addTabToNewGroup',
       tabId: parseInt(currentTabId),
       groupId: newGroupId,
-      groupName: groupName
+      groupName: groupName,
+      windowId: sidepanelWindowId
     });
 
     if (response && response.success) {
@@ -216,7 +218,8 @@ function renderTabs() {
           await chrome.runtime.sendMessage({
             action: 'updateGroupName',
             groupId: groupId,
-            groupName: newName.trim()
+            groupName: newName.trim(),
+            windowId: sidepanelWindowId
           });
         } catch (error) {
           console.warn('Failed to update group name in background script:', error);
@@ -275,7 +278,8 @@ function renderTabs() {
         try {
           await chrome.runtime.sendMessage({
             action: 'deleteGroup',
-            groupId: groupId
+            groupId: groupId,
+            windowId: sidepanelWindowId
           });
         } catch (error) {
           console.error('Error deleting group:', error);
@@ -454,7 +458,8 @@ async function handleDrop(e) {
     await chrome.runtime.sendMessage({
       action: 'updateMultipleTabGroups',
       tabIds: tabIdsToMove,
-      newGroupId: targetGroupId
+      newGroupId: targetGroupId,
+      windowId: sidepanelWindowId
     });
   } catch (error) {
     console.error('Failed to update tab groups in background:', error);
@@ -531,7 +536,7 @@ async function updateTabsInternal() {
   isUpdating = true;
   
   try {
-    const allTabs = await chrome.tabs.query({});
+    const allTabs = await chrome.tabs.query({ windowId: sidepanelWindowId });
     const currentTabGroups = { ...tabGroups };
     const allTabIds = allTabs.map(t => t.id);
 
@@ -544,7 +549,7 @@ async function updateTabsInternal() {
     let tabGroupMap = {};
     let groupNames = {};
     try {
-      const response = await chrome.runtime.sendMessage({ action: 'getTabGroupMap' });
+      const response = await chrome.runtime.sendMessage({ action: 'getTabGroupMap', windowId: sidepanelWindowId });
       tabGroupMap = response?.tabGroupMap || {};
       groupNames = response?.groupNames || {};
     } catch (error) {
@@ -647,7 +652,8 @@ newGroupBtn.addEventListener('click', async () => {
     const response = await chrome.runtime.sendMessage({
       action: 'createGroup',
       groupId: newGroupId,
-      groupName: groupName
+      groupName: groupName,
+      windowId: sidepanelWindowId
     });
 
     if (response && response.success) {
@@ -709,22 +715,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 
-// Initialize context menu and global click handler
-createContextMenu();
+async function init() {
+  sidepanelWindowId = (await chrome.windows.getCurrent()).id;
+  // Initialize context menu and global click handler
+  createContextMenu();
 
-// Global click handler to hide context menu when clicking elsewhere
-document.addEventListener('click', (e) => {
-  if (contextMenu && !contextMenu.contains(e.target)) {
-    hideContextMenu();
-  }
-});
+  // Global click handler to hide context menu when clicking elsewhere
+  document.addEventListener('click', (e) => {
+    if (contextMenu && !contextMenu.contains(e.target)) {
+      hideContextMenu();
+    }
+  });
 
-// Prevent context menu on empty areas of the container
-tabsContainer.addEventListener('contextmenu', (e) => {
-  // Only allow context menu on tab elements, not empty container areas
-  if (!e.target.closest('.tab-item')) {
-    e.preventDefault();
-  }
-});
+  // Prevent context menu on empty areas of the container
+  tabsContainer.addEventListener('contextmenu', (e) => {
+    // Only allow context menu on tab elements, not empty container areas
+    if (!e.target.closest('.tab-item')) {
+      e.preventDefault();
+    }
+  });
 
-updateTabs();
+  updateTabs();
+}
+
+init();

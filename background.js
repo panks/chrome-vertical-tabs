@@ -1,9 +1,9 @@
 // In-memory stores are replaced with chrome.storage.session for persistence across service worker restarts.
 async function getState() {
-    const result = await chrome.storage.session.get(['tabGroupMap', 'groupNames']);
+    const result = await chrome.storage.session.get(['tabGroupMap', 'windowData']);
     return {
         tabGroupMap: result.tabGroupMap || {},
-        groupNames: result.groupNames || {}
+        windowData: result.windowData || {}
     };
 }
 
@@ -53,8 +53,14 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
         if (message.action === 'getTabGroupMap') {
-            const { tabGroupMap, groupNames } = await getState();
-            sendResponse({ tabGroupMap: tabGroupMap, groupNames: groupNames });
+            const { tabGroupMap, windowData } = await getState();
+            const windowId = message.windowId;
+            if (!windowId) {
+                sendResponse({ tabGroupMap: tabGroupMap, groupNames: {} });
+                return;
+            }
+            const windowGroups = windowData[windowId] ? windowData[windowId].groupNames : {};
+            sendResponse({ tabGroupMap: tabGroupMap, groupNames: windowGroups });
         } else if (message.action === 'updateMultipleTabGroups') {
             const { tabGroupMap } = await getState();
             message.tabIds.forEach(tabId => {
@@ -63,48 +69,77 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             await setState({ tabGroupMap });
             sendResponse({ success: true });
         } else if (message.action === 'addTabToNewGroup') {
-            const { tabGroupMap, groupNames } = await getState();
+            const { tabGroupMap, windowData } = await getState();
+            const { windowId, tabId } = message;
+            if (!windowId) {
+                sendResponse({ success: false, error: 'windowId is required' });
+                return;
+            }
             const newGroupId = message.groupId || `group-${Date.now()}`;
-            const groupName = message.groupName || `Group ${Object.keys(groupNames).length + 1}`;
+            if (!windowData[windowId]) {
+                windowData[windowId] = { groupNames: {} };
+            }
+            const groupName = message.groupName || `Group ${Object.keys(windowData[windowId].groupNames).length + 1}`;
             
-            tabGroupMap[message.tabId] = newGroupId;
-            groupNames[newGroupId] = groupName;
+            tabGroupMap[tabId] = newGroupId;
+            windowData[windowId].groupNames[newGroupId] = groupName;
             
-            await setState({ tabGroupMap, groupNames });
+            await setState({ tabGroupMap, windowData });
             
             sendResponse({ success: true, groupId: newGroupId, groupName: groupName });
         } else if (message.action === 'updateGroupName') {
-            if (message.groupId && message.groupName) {
-                const { groupNames } = await getState();
-                groupNames[message.groupId] = message.groupName;
-                await setState({ groupNames });
-                sendResponse({ success: true });
+            const { windowId, groupId, groupName } = message;
+            if (groupId && groupName && windowId) {
+                const { windowData } = await getState();
+                if (windowData[windowId] && windowData[windowId].groupNames) {
+                    windowData[windowId].groupNames[groupId] = groupName;
+                    await setState({ windowData });
+                    sendResponse({ success: true });
+                } else {
+                    sendResponse({ success: false, error: 'Window or group not found.' });
+                }
             } else {
                 sendResponse({ success: false, error: 'Invalid parameters for group name update.' });
             }
         } else if (message.action === 'createGroup') {
-            const { groupNames } = await getState();
+            const { windowData } = await getState();
+            const { windowId } = message;
+            if (!windowId) {
+                sendResponse({ success: false, error: 'windowId is required' });
+                return;
+            }
             const newGroupId = message.groupId || `group-${Date.now()}`;
             const groupName = message.groupName || `New Group`;
-            if (!groupNames[newGroupId]) {
-                groupNames[newGroupId] = groupName;
-                await setState({ groupNames });
+            if (!windowData[windowId]) {
+                windowData[windowId] = { groupNames: {} };
+            }
+            if (!windowData[windowId].groupNames[newGroupId]) {
+                windowData[windowId].groupNames[newGroupId] = groupName;
+                await setState({ windowData });
                 sendResponse({ success: true, groupId: newGroupId, groupName: groupName });
             } else {
                 sendResponse({ success: false, error: 'Group already exists' });
             }
         } else if (message.action === 'deleteGroup') {
-            if (message.groupId) {
-                const { groupNames } = await getState();
-                if (groupNames[message.groupId]) {
-                    delete groupNames[message.groupId];
-                    await setState({ groupNames });
+            const { windowId, groupId } = message;
+            if (groupId && windowId) {
+                const { windowData, tabGroupMap } = await getState();
+                if (windowData[windowId] && windowData[windowId].groupNames[groupId]) {
+                    delete windowData[windowId].groupNames[groupId];
+                    
+                    // Ungroup tabs that were in this group
+                    for (const tabId in tabGroupMap) {
+                        if (tabGroupMap[tabId] === groupId) {
+                            delete tabGroupMap[tabId];
+                        }
+                    }
+                    await setState({ windowData, tabGroupMap });
                     sendResponse({ success: true });
                 } else {
                     sendResponse({ success: false, error: 'Group not found' });
                 }
             } else {
-                sendResponse({ success: false, error: 'Group not found' });
+                sendResponse({ success: false, error: 'Group ID and Window ID are required' });
             }
         }
     })();
