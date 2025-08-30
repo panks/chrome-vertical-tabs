@@ -553,18 +553,14 @@ async function restoreSession(session) {
             const newWindowId = newWindow.id;
             const firstTabId = newWindow.tabs[0].id;
             
-            // Set up group names for this window - use both window-specific and session-wide group names
+            // Set up group names for this window - only use window-specific group names
             if (!currentWindowData[newWindowId]) {
                 currentWindowData[newWindowId] = { groupNames: {} };
             }
             
-            // Merge window-specific group names with session-wide group names
+            // Only use window-specific group names to ensure proper isolation between windows
             const windowGroupNames = windowData.groupNames || {};
-            const sessionGroupNames = session.groupNames || {};
-            currentWindowData[newWindowId].groupNames = { 
-                ...sessionGroupNames, 
-                ...windowGroupNames 
-            };
+            currentWindowData[newWindowId].groupNames = { ...windowGroupNames };
             
             // Set group for first tab
             if (firstTab.groupId && firstTab.groupId !== 'ungrouped') {
