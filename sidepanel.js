@@ -21,6 +21,7 @@ let tabGroups = {
 };
 let groupOrder = ['ungrouped'];
 let selectedTabs = new Set();
+let lastSelectedTabId = null; // Track the last selected tab for range selection
 let isDragging = false;
 let isSidePanelInteracting = false; // Flag to track user interaction within the side panel
 let sidepanelWindowId = null;
@@ -105,6 +106,53 @@ function focusAndEditGroupName(groupNameEl) {
   range.selectNodeContents(groupNameEl);
   selection.removeAllRanges();
   selection.addRange(range);
+}
+
+/**
+ * Handles range selection when SHIFT + click is used
+ * Selects all tabs between the last selected tab and the current tab
+ */
+function handleRangeSelection(currentTabId) {
+  // If no last selected tab, just select the current tab
+  if (!lastSelectedTabId) {
+    selectedTabs.clear();
+    selectedTabs.add(currentTabId);
+    lastSelectedTabId = currentTabId;
+    return;
+  }
+
+  // Get all visible tabs in order (following group order)
+  const allVisibleTabs = [];
+  for (const groupId of groupOrder) {
+    if (tabGroups[groupId] && !tabGroups[groupId].collapsed) {
+      allVisibleTabs.push(...tabGroups[groupId].tabs);
+    }
+  }
+
+  // Find positions of last selected and current tabs
+  const lastSelectedIndex = allVisibleTabs.findIndex(tab => tab.id === lastSelectedTabId);
+  const currentIndex = allVisibleTabs.findIndex(tab => tab.id === currentTabId);
+
+  // If either tab is not found, fall back to simple selection
+  if (lastSelectedIndex === -1 || currentIndex === -1) {
+    selectedTabs.clear();
+    selectedTabs.add(currentTabId);
+    lastSelectedTabId = currentTabId;
+    return;
+  }
+
+  // Determine the range (ensure start <= end)
+  const startIndex = Math.min(lastSelectedIndex, currentIndex);
+  const endIndex = Math.max(lastSelectedIndex, currentIndex);
+
+  // Select all tabs in the range (inclusive)
+  selectedTabs.clear();
+  for (let i = startIndex; i <= endIndex; i++) {
+    selectedTabs.add(allVisibleTabs[i].id);
+  }
+
+  // Update last selected to current tab
+  lastSelectedTabId = currentTabId;
 }
 
 /**
@@ -350,7 +398,8 @@ function renderTabs() {
 
           isSidePanelInteracting = true;
           // Immediately activate tab on mousedown for responsiveness.
-          if (!e.shiftKey && e.button === 0) {
+          // Prevent activation if CTRL/CMD or SHIFT is held (for multi-select or range select)
+          if (!(e.ctrlKey || e.metaKey || e.shiftKey) && e.button === 0) {
             chrome.tabs.update(tab.id, { active: true });
             chrome.windows.update(tab.windowId, { focused: true });
           }
@@ -362,28 +411,37 @@ function renderTabs() {
           // Reset the flag after the event cycle, so onActivated can see it first.
           setTimeout(() => { isSidePanelInteracting = false; }, 0);
           
-          if (e.shiftKey || e.button !== 0) return;
+          // Skip if modifier keys are held (handled by click handler) or not left button
+          if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
 
           // If a drag operation is in progress, don't treat this as a click.
           if (isDragging) {
             return;
           }
 
-          // This is a normal click/mouseup. Set the selection.
+          // This is a normal click/mouseup. Set the selection and update last selected.
           selectedTabs.clear();
           selectedTabs.add(tab.id);
+          lastSelectedTabId = tab.id;
           renderTabs();
         });
 
         tabEl.addEventListener('click', (e) => {
-          // This handler is now only for shift-clicks to toggle selection.
-          if (e.shiftKey) {
+          // Handle CTRL/CMD + click for toggle selection (multi-select)
+          if (e.ctrlKey || e.metaKey) {
             e.preventDefault();
             if (selectedTabs.has(tab.id)) {
               selectedTabs.delete(tab.id);
             } else {
               selectedTabs.add(tab.id);
+              lastSelectedTabId = tab.id;
             }
+            renderTabs();
+          }
+          // Handle SHIFT + click for range selection
+          else if (e.shiftKey) {
+            e.preventDefault();
+            handleRangeSelection(tab.id);
             renderTabs();
           }
         });
@@ -438,6 +496,7 @@ function handleDragStart(e) {
   if (!selectedTabs.has(tabId)) {
     selectedTabs.clear();
     selectedTabs.add(tabId);
+    lastSelectedTabId = tabId;
     // No direct re-render here, but the drop logic will use the updated selectedTabs
   }
 
@@ -710,6 +769,7 @@ async function handleTabActivation(activeInfo) {
   // If the activation came from outside, sync the selection to the active tab.
   selectedTabs.clear();
   selectedTabs.add(activeInfo.tabId);
+  lastSelectedTabId = activeInfo.tabId;
   await debouncedUpdateTabs();
 }
 
