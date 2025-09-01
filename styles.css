@@ -285,7 +285,7 @@ body.dark-mode .tab-item.selected {
   background-color: #007bff;
   margin: 0;
   opacity: 0;
-  transition: all 0.05s ease;
+  transition: all 0.05s linear;
   border-radius: 1px;
   pointer-events: none;
   overflow: hidden;
@@ -307,7 +307,7 @@ body.dark-mode .drop-indicator {
   background-color: #28a745;
   margin: 0;
   opacity: 0;
-  transition: all 0.05s ease;
+  transition: all 0.05s linear;
   border-radius: 2px;
   pointer-events: none;
   overflow: hidden;
