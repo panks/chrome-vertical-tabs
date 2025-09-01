@@ -370,7 +370,15 @@ function renderTabs() {
       const tabList = document.createElement('ul');
       tabList.className = 'tab-list';
       
-      group.tabs.forEach(tab => {
+      // Add drop indicator before first tab
+      if (group.tabs.length > 0) {
+        const firstIndicator = document.createElement('div');
+        firstIndicator.className = 'drop-indicator';
+        firstIndicator.dataset.dropIndex = '0';
+        tabList.appendChild(firstIndicator);
+      }
+
+      group.tabs.forEach((tab, index) => {
         const tabEl = document.createElement('li');
         tabEl.className = 'tab-item';
         tabEl.dataset.tabId = tab.id;
@@ -463,6 +471,12 @@ function renderTabs() {
         tabEl.appendChild(closeBtn);
         
         tabList.appendChild(tabEl);
+
+        // Add drop indicator after each tab (except the last one is handled separately)
+        const indicator = document.createElement('div');
+        indicator.className = 'drop-indicator';
+        indicator.dataset.dropIndex = (index + 1).toString();
+        tabList.appendChild(indicator);
       });
 
       groupEl.appendChild(tabList);
@@ -470,6 +484,7 @@ function renderTabs() {
 
     groupEl.addEventListener('dragover', handleDragOver);
     groupEl.addEventListener('drop', handleDrop);
+    groupEl.addEventListener('dragleave', handleDragLeave);
     
     tabsContainer.appendChild(groupEl);
   }
@@ -514,7 +529,107 @@ function handleDragOver(e) {
     e.preventDefault();
   }
   e.dataTransfer.dropEffect = 'move';
+  
+  // Show appropriate drop indicator for tab reordering
+  const tabListEl = e.target.closest('.tab-list');
+  if (tabListEl) {
+    // Hide all indicators first
+    const allIndicators = document.querySelectorAll('.drop-indicator');
+    allIndicators.forEach(indicator => indicator.classList.remove('active'));
+    
+    // Check if this is a tab drag operation (not a group drag)
+    const draggedTabData = e.dataTransfer.types.includes('application/json');
+    if (draggedTabData) {
+      // Find the closest drop position
+      const indicators = Array.from(tabListEl.querySelectorAll('.drop-indicator'));
+      if (indicators.length > 0) {
+        const mouseY = e.clientY;
+        let closestIndicator = indicators[0];
+        let minDistance = Math.abs(mouseY - getIndicatorY(closestIndicator));
+        
+        for (const indicator of indicators) {
+          const distance = Math.abs(mouseY - getIndicatorY(indicator));
+          if (distance < minDistance) {
+            minDistance = distance;
+            closestIndicator = indicator;
+          }
+        }
+        
+        // Show the closest indicator
+        closestIndicator.classList.add('active');
+      }
+    }
+  }
+  
   return false;
+}
+
+/**
+ * Gets the vertical center position of a drop indicator
+ */
+function getIndicatorY(indicator) {
+  const rect = indicator.getBoundingClientRect();
+  return rect.top + rect.height / 2;
+}
+
+/**
+ * Handles drag leave events to hide drop indicators
+ */
+function handleDragLeave(e) {
+  // Only hide indicators if we're leaving the group entirely
+  // Check if the related target is still within this group
+  if (!e.relatedTarget || !e.currentTarget.contains(e.relatedTarget)) {
+    const groupIndicators = e.currentTarget.querySelectorAll('.drop-indicator');
+    groupIndicators.forEach(indicator => indicator.classList.remove('active'));
+  }
+}
+
+/**
+ * Calculates the drop position within a tab list based on the active drop indicator
+ * Returns the index where the tab should be inserted
+ */
+function calculateDropPosition(e, tabListEl) {
+  if (!tabListEl) return 0;
+  
+  // Find the active drop indicator
+  const activeIndicator = tabListEl.querySelector('.drop-indicator.active');
+  if (activeIndicator) {
+    const dropIndex = parseInt(activeIndicator.dataset.dropIndex);
+    return isNaN(dropIndex) ? 0 : dropIndex;
+  }
+  
+  // Fallback to the old method if no indicator is active
+  const tabItems = Array.from(tabListEl.querySelectorAll('.tab-item'));
+  if (tabItems.length === 0) return 0;
+  
+  const mouseY = e.clientY;
+  
+  for (let i = 0; i < tabItems.length; i++) {
+    const tabRect = tabItems[i].getBoundingClientRect();
+    const tabCenter = tabRect.top + tabRect.height / 2;
+    
+    if (mouseY < tabCenter) {
+      return i; // Insert before this tab
+    }
+  }
+  
+  return tabItems.length; // Insert at the end
+}
+
+/**
+ * Finds the source group ID for the dragged tabs
+ */
+function findSourceGroupId(tabIdsToMove) {
+  for (const groupId in tabGroups) {
+    const group = tabGroups[groupId];
+    if (group && group.tabs) {
+      const hasTab = group.tabs.some(tab => tabIdsToMove.includes(tab.id));
+      if (hasTab) {
+        return groupId;
+      }
+    }
+  }
+  return null;
 }
 
 async function handleDrop(e) {
@@ -531,7 +646,7 @@ async function handleDrop(e) {
     return handleGroupDrop(e, droppedOnGroupEl, groupData);
   }
 
-  // Handle tab drops (existing functionality)
+  // Handle tab drops
   const targetGroupId = droppedOnGroupEl.dataset.groupId;
   const tabIdsToMove = JSON.parse(e.dataTransfer.getData('application/json') || '[]');
 
@@ -539,6 +654,73 @@ async function handleDrop(e) {
     return false;
   }
 
+  const sourceGroupId = findSourceGroupId(tabIdsToMove);
+  
+  // Check if this is an intra-group reorder (same group)
+  if (sourceGroupId === targetGroupId) {
+    return await handleIntraGroupReorder(e, targetGroupId, tabIdsToMove);
+  }
+
+  // Handle inter-group moves (existing functionality)
+  return await handleInterGroupMove(targetGroupId, tabIdsToMove);
+}
+
+/**
+ * Handles reordering tabs within the same group
+ */
+async function handleIntraGroupReorder(e, groupId, tabIdsToMove) {
+  const tabListEl = e.target.closest('.tab-list');
+  if (!tabListEl) return false;
+  
+  const targetGroup = tabGroups[groupId];
+  if (!targetGroup) return false;
+  
+  // Calculate the drop position
+  const dropIndex = calculateDropPosition(e, tabListEl);
+  
+  // Get the tabs being moved
+  const tabsToMove = targetGroup.tabs.filter(tab => tabIdsToMove.includes(tab.id));
+  const remainingTabs = targetGroup.tabs.filter(tab => !tabIdsToMove.includes(tab.id));
+  
+  // Insert moved tabs at the drop position
+  const newTabOrder = [
+    ...remainingTabs.slice(0, dropIndex),
+    ...tabsToMove,
+    ...remainingTabs.slice(dropIndex)
+  ];
+  
+  // Update local state
+  targetGroup.tabs = newTabOrder;
+  
+  // Reorder tabs in browser to match the new order
+  try {
+    const tabIdOrder = newTabOrder.map(tab => tab.id);
+    // Move all tabs in the group to maintain their relative order
+    if (tabIdOrder.length > 0) {
+      // Find the first tab's current index to determine the starting position
+      const allTabs = await chrome.tabs.query({ windowId: sidepanelWindowId });
+      const firstTabCurrentIndex = allTabs.find(tab => tab.id === tabIdOrder[0])?.index || 0;
+      
+      // Move tabs one by one to maintain order
+      for (let i = 0; i < tabIdOrder.length; i++) {
+        await chrome.tabs.move(tabIdOrder[i], { index: firstTabCurrentIndex + i });
+      }
+    }
+  } catch (error) {
+    console.error('Failed to reorder tabs in browser:', error);
+    // Revert local changes on error
+    await debouncedUpdateTabs();
+    return false;
+  }
+  
+  renderTabs();
+  return false;
+}
+
+/**
+ * Handles moving tabs between different groups
+ */
+async function handleInterGroupMove(targetGroupId, tabIdsToMove) {
   // Atomically update the background script with the new group for all moved tabs.
   try {
     await chrome.runtime.sendMessage({
@@ -624,6 +806,10 @@ function handleDragEnd(e) {
   items.forEach(function(item) {
     item.classList.remove('dragging');
   });
+  
+  // Hide all drop indicators
+  const allIndicators = document.querySelectorAll('.drop-indicator');
+  allIndicators.forEach(indicator => indicator.classList.remove('active'));
 }
 
 /**
@@ -653,6 +839,10 @@ function handleGroupDragEnd(e) {
   groupElements.forEach(function(group) {
     group.classList.remove('dragging');
   });
+  
+  // Hide all drop indicators
+  const allIndicators = document.querySelectorAll('.drop-indicator');
+  allIndicators.forEach(indicator => indicator.classList.remove('active'));
 }
 
 function addDragAndDropHandlers() {
