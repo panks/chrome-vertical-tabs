@@ -201,7 +201,15 @@ function renderTabs() {
     return;
   }
   
-  for (const groupId of groupOrder) {
+  // Add drop indicator before first group
+  if (groupOrder.length > 0) {
+    const firstGroupIndicator = document.createElement('div');
+    firstGroupIndicator.className = 'group-drop-indicator';
+    firstGroupIndicator.dataset.groupDropIndex = '0';
+    tabsContainer.appendChild(firstGroupIndicator);
+  }
+  
+  for (const [index, groupId] of groupOrder.entries()) {
     if (!tabGroups[groupId]) continue;
     const group = tabGroups[groupId];
     
@@ -487,6 +495,12 @@ function renderTabs() {
     groupEl.addEventListener('dragleave', handleDragLeave);
     
     tabsContainer.appendChild(groupEl);
+    
+    // Add drop indicator after each group
+    const groupIndicator = document.createElement('div');
+    groupIndicator.className = 'group-drop-indicator';
+    groupIndicator.dataset.groupDropIndex = (index + 1).toString();
+    tabsContainer.appendChild(groupIndicator);
   }
 
   addDragAndDropHandlers();
@@ -530,16 +544,40 @@ function handleDragOver(e) {
   }
   e.dataTransfer.dropEffect = 'move';
   
-  // Show appropriate drop indicator for tab reordering
-  const tabListEl = e.target.closest('.tab-list');
-  if (tabListEl) {
-    // Hide all indicators first
-    const allIndicators = document.querySelectorAll('.drop-indicator');
-    allIndicators.forEach(indicator => indicator.classList.remove('active'));
+  // Hide all indicators first
+  const allTabIndicators = document.querySelectorAll('.drop-indicator');
+  const allGroupIndicators = document.querySelectorAll('.group-drop-indicator');
+  allTabIndicators.forEach(indicator => indicator.classList.remove('active'));
+  allGroupIndicators.forEach(indicator => indicator.classList.remove('active'));
+  
+  // Check what type of drag operation this is
+  const draggedTabData = e.dataTransfer.types.includes('application/json');
+  const draggedGroupData = e.dataTransfer.types.includes('application/group-json');
+  
+  if (draggedGroupData) {
+    // Handle group reordering indicators
+    const mouseY = e.clientY;
+    const groupIndicators = Array.from(document.querySelectorAll('.group-drop-indicator'));
     
-    // Check if this is a tab drag operation (not a group drag)
-    const draggedTabData = e.dataTransfer.types.includes('application/json');
-    if (draggedTabData) {
+    if (groupIndicators.length > 0) {
+      let closestIndicator = groupIndicators[0];
+      let minDistance = Math.abs(mouseY - getIndicatorY(closestIndicator));
+      
+      for (const indicator of groupIndicators) {
+        const distance = Math.abs(mouseY - getIndicatorY(indicator));
+        if (distance < minDistance) {
+          minDistance = distance;
+          closestIndicator = indicator;
+        }
+      }
+      
+      // Show the closest group indicator
+      closestIndicator.classList.add('active');
+    }
+  } else if (draggedTabData) {
+    // Handle tab reordering indicators (existing logic)
+    const tabListEl = e.target.closest('.tab-list');
+    if (tabListEl) {
       // Find the closest drop position
       const indicators = Array.from(tabListEl.querySelectorAll('.drop-indicator'));
       if (indicators.length > 0) {
@@ -579,7 +617,9 @@ function handleDragLeave(e) {
   // Only hide indicators if we're leaving the group entirely
   // Check if the related target is still within this group
   if (!e.relatedTarget || !e.currentTarget.contains(e.relatedTarget)) {
-    const groupIndicators = e.currentTarget.querySelectorAll('.drop-indicator');
+    const tabIndicators = e.currentTarget.querySelectorAll('.drop-indicator');
+    const groupIndicators = e.currentTarget.querySelectorAll('.group-drop-indicator');
+    tabIndicators.forEach(indicator => indicator.classList.remove('active'));
     groupIndicators.forEach(indicator => indicator.classList.remove('active'));
   }
 }
@@ -769,28 +809,47 @@ async function handleInterGroupMove(targetGroupId, tabIdsToMove) {
 function handleGroupDrop(e, droppedOnGroupEl, groupData) {
   const parsedGroupData = JSON.parse(groupData);
   const draggedGroupId = parsedGroupData.groupId;
-  const targetGroupId = droppedOnGroupEl.dataset.groupId;
   
-  // Don't allow dropping on the same group or on ungrouped
-  if (draggedGroupId === targetGroupId || targetGroupId === 'ungrouped' || draggedGroupId === 'ungrouped') {
+  // Don't allow reordering ungrouped
+  if (draggedGroupId === 'ungrouped') {
     return false;
   }
   
-  // Find indices in the group order
-  const draggedIndex = groupOrder.indexOf(draggedGroupId);
-  const targetIndex = groupOrder.indexOf(targetGroupId);
+  // Find the active group drop indicator
+  const activeGroupIndicator = document.querySelector('.group-drop-indicator.active');
+  if (!activeGroupIndicator) {
+    return false; // No active indicator, can't determine drop position
+  }
   
-  if (draggedIndex === -1 || targetIndex === -1) {
+  const dropIndex = parseInt(activeGroupIndicator.dataset.groupDropIndex);
+  if (isNaN(dropIndex)) {
+    return false;
+  }
+  
+  // Find current index of the dragged group
+  const draggedIndex = groupOrder.indexOf(draggedGroupId);
+  if (draggedIndex === -1) {
+    return false;
+  }
+  
+  // Calculate the new index after removing the dragged group
+  let newIndex = dropIndex;
+  if (draggedIndex < dropIndex) {
+    newIndex = dropIndex - 1; // Adjust for the removed group
+  }
+  
+  // Don't move if it's the same position
+  if (newIndex === draggedIndex) {
     return false;
   }
   
   // Remove the dragged group from its current position
   groupOrder.splice(draggedIndex, 1);
   
-  // Insert it at the target position
-  // If we removed an item before the target, adjust the target index
-  const adjustedTargetIndex = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
-  groupOrder.splice(adjustedTargetIndex, 0, draggedGroupId);
+  // Insert it at the new position
+  // Ensure we don't go beyond array bounds
+  newIndex = Math.max(0, Math.min(newIndex, groupOrder.length));
+  groupOrder.splice(newIndex, 0, draggedGroupId);
   
   // Re-render to show the new order
   renderTabs();
@@ -807,9 +866,11 @@ function handleDragEnd(e) {
     item.classList.remove('dragging');
   });
   
-  // Hide all drop indicators
-  const allIndicators = document.querySelectorAll('.drop-indicator');
-  allIndicators.forEach(indicator => indicator.classList.remove('active'));
+  // Hide all drop indicators (both tab and group indicators)
+  const allTabIndicators = document.querySelectorAll('.drop-indicator');
+  const allGroupIndicators = document.querySelectorAll('.group-drop-indicator');
+  allTabIndicators.forEach(indicator => indicator.classList.remove('active'));
+  allGroupIndicators.forEach(indicator => indicator.classList.remove('active'));
 }
 
 /**
@@ -840,9 +901,11 @@ function handleGroupDragEnd(e) {
     group.classList.remove('dragging');
   });
   
-  // Hide all drop indicators
-  const allIndicators = document.querySelectorAll('.drop-indicator');
-  allIndicators.forEach(indicator => indicator.classList.remove('active'));
+  // Hide all drop indicators (both tab and group indicators)
+  const allTabIndicators = document.querySelectorAll('.drop-indicator');
+  const allGroupIndicators = document.querySelectorAll('.group-drop-indicator');
+  allTabIndicators.forEach(indicator => indicator.classList.remove('active'));
+  allGroupIndicators.forEach(indicator => indicator.classList.remove('active'));
 }
 
 function addDragAndDropHandlers() {

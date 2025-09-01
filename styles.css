@@ -301,6 +301,30 @@ body.dark-mode .drop-indicator {
   background-color: #009bff;
 }
 
+/* Drop indicator for group reordering */
+.group-drop-indicator {
+  height: 0;
+  background-color: #28a745;
+  margin: 0;
+  opacity: 0;
+  transition: all 0.05s ease;
+  border-radius: 2px;
+  pointer-events: none;
+  overflow: hidden;
+  box-shadow: 0 0 4px rgba(40, 167, 69, 0.3);
+}
+
+.group-drop-indicator.active {
+  height: 4px;
+  margin: 4px 0;
+  opacity: 1;
+}
+
+body.dark-mode .group-drop-indicator {
+  background-color: #20c997;
+  box-shadow: 0 0 4px rgba(32, 201, 151, 0.3);
+}
+
 .close-tab-btn {
   border: none;
   background: none;
